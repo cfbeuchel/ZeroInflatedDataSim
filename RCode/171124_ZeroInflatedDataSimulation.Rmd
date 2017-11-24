@@ -54,7 +54,7 @@ newest_rprofile()
 
 # start time measurement, define alternative package directory, define start codes for external start of the script
 if (r_on_server == T) {
-  initializeSkript(myfilename = filename, computer = "forostar") # enter which server you are on
+  initializeSkript(myfilename = filename, computer = "dunhargRRO") # enter which server you are on
 } else
   initializeSkript(myfilename = filename, computer = "local")
 
@@ -62,7 +62,9 @@ if (r_on_server == T) {
 for (i in c(
   "knitr",
   "data.table",
-  "broom"
+  "broom",
+  "ordinal",
+  "MASS"
 )) {
   suppressPackageStartupMessages(library(i, character.only = TRUE))
 }
@@ -112,12 +114,13 @@ szenarien[,num := 1:.N]
 # apply over each szenario
 apply(szenarien, 1, function(x) {
   
-  # x <- szenarien[1, ] # debug
-  # effekt <- x$effekte   # debug
-  # n <- x$n # debug
-  # proz0 <- x$proz0 # debug
-  # categart <- x$categart # debug
-  # categnum <- x$categnum # debug
+#   x <- szenarien[268, ] # debug
+#   effekt <- x$effekte   # debug
+#   n <- x$n # debug
+#   proz0 <- x$proz0 # debug
+#   categart <- x$categart # debug
+#   categnum <- x$categnum # debug
+#   num <- x$num # debug
   
   # for readability, assign parameters of each scenario
   effekt <- as.numeric(x[1])
@@ -163,23 +166,38 @@ apply(szenarien, 1, function(x) {
     
     # categorisation over quantiles
     df[y.0infl > 0, y.0infl.categ := cut(y.0infl, breaks = quantile(y.0infl, probs = seq(0, 1, 1/categnum)), include.lowest = T)]
-    categs.created = df[, levels(y.0infl.categ)]
+    categs.created <- df[, levels(y.0infl.categ)]
     df[y.0infl == 0, y.0infl.categ := factor(0, labels =  "[0]")]
     df[, y.0infl.categ := factor(y.0infl.categ, levels = c("[0]", categs.created))]
   } else if(categart == "bereiche"){
     
     # category separating over range
-#     df[y.0infl > 0, y.0infl.categ := cut(y.0infl, breaks = quantile(y.0infl, probs = seq(0, 1, 1/categnum)), include.lowest = T)]
-#     categs.created = df[, levels(y.0infl.categ)]
-#     df[y.0infl == 0, y.0infl.categ := factor(0, labels =  "[0]")]
-#     df[, y.0infl.categ := factor(y.0infl.categ, levels = c("[0]", categs.created))]
+    df[y.0infl > 0, y.0infl.categ := cut(y.0infl, breaks = seq(0, max(y.0infl), length.out = categnum + 1), include.lowest = T)]
+    categs.created <- df[, levels(y.0infl.categ)]
+    df[y.0infl == 0, y.0infl.categ := factor(0, labels =  "[0]")]
+    df[, y.0infl.categ := factor(y.0infl.categ, levels = c("[0]", categs.created))]
     
   } else {
     stop("Error")
   }
   
-})
+  # now we have the complete data and start fitting the model
+  # start with fitting the regular glm for a dichotomized y
+  linmod.dicho <- df[, summary(glm(y.0infl > 0 ~ x))]
+  
+  # enter results
+  res[, `:=`(dicho.pval = linmod.dicho$coefficients["x", "Pr(>|t|)"],
+             dicho.beta = linmod.dicho$coefficients["x","Estimate"])]
+  
+  # fit the ordinal proportional odds model
+  df[, MASS::polr(y.0infl.categ ~ x)]
+  df[, ordinal::clm(y.0infl.categ ~ x)]
 
+  
+})
+```
+
+```{r template, include=F}
 #===================================================================#
 #Code template
 #===================================================================#

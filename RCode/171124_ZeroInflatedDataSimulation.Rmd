@@ -1,0 +1,69 @@
+---
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    toc_depth: 3
+author: "Carl Beuchel"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+```{r knitr, cache = F, results = "markup", echo = T, warning = T}
+# start with a clean workspace
+rm(list=ls())
+gc()
+
+# Set the global knitr options
+knitr::opts_chunk$set(cache = F, results = "hide", echo = T ,include = T)
+
+# what should the output file be called?
+filename = "Zero-inflated data simulation"
+```
+
+# `r filename`
+***
+This script is a small data simulation to help figure out an appropriate data transformation withouth loosing too much statistical power in the subsequent regression analyses.
+
+```{r initiate, cache = F, results = "hide", echo = F}
+# choose correct working directory
+r_on_server <- T
+if (r_on_server == T) {
+  basicpath <- "/net/ifs1/san_projekte/projekte/"
+} else {
+  basicpath <- "/mnt/ifs1_projekte/"
+}
+setwd(basicpath)
+
+# set working directory
+pathwd <-
+  paste0(
+    basicpath,
+    "genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171121_a1_b3_sorb_GxProbeAnnotTab"
+  )
+setwd(pathwd)
+
+# get additional functions from Holger Kirstens newest RProfile file
+newest_rprofile <-
+  function(designation = paste0(basicpath, "genstat/07_programme/rtools/RProfile_hk/")) {
+    files <- list.files(designation)
+    RProfiles <- files[grep("Rprofile_hk_", files)]
+    newest_RProfile <- tail(sort(RProfiles), n = 1)
+    suppressPackageStartupMessages(source(paste0(designation, newest_RProfile)))
+  }
+newest_rprofile()
+
+# start time measurement, define alternative package directory, define start codes for external start of the script
+if (r_on_server == T) {
+  initializeSkript(myfilename = filename, computer = "forostar") # enter which server you are on
+} else
+  initializeSkript(myfilename = filename, computer = "local")
+
+# Packages for efficiently loading data
+for (i in c(
+  "knitr",
+  "data.table",
+  "broom"
+)) {
+  suppressPackageStartupMessages(library(i, character.only = TRUE))
+}
+```

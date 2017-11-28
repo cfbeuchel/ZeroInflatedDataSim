@@ -36,5 +36,6 @@ vignettes/*.pdf
 # ignore .Rout files
 *.Rout
 
-# ingore locally computed result files
+# ingore locally computed result files and _archives
 /results/*
+/RCode/_archive/

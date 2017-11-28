@@ -6,6 +6,8 @@ output:
     toc_depth: 3
 author: "Carl Beuchel"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r knitr, cache = F, results = "markup", echo = T, warning = T}
@@ -26,7 +28,7 @@ This script is a small data simulation to help figure out an appropriate data tr
 
 ```{r initiate, cache = F, results = "hide", echo = F}
 # choose correct working directory
-r_on_server <- T
+r_on_server <- F
 if (r_on_server == T) {
   basicpath <- "/net/ifs1/san_projekte/projekte/"
 } else {
@@ -63,7 +65,8 @@ for (i in c(
   "knitr",
   "data.table",
   "MASS",
-  "ggplot2"
+  "ggplot2",
+  "scales"
 )) {
   suppressPackageStartupMessages(library(i, character.only = TRUE))
 }
@@ -74,16 +77,131 @@ for (i in c(
 ```{r load}
 # load the simuation results
 all.scenarios <- fread("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/results/171127_SimulationResults.csv")
+
+# add fdr
+all.scenarios[, linmod.fdr := p.adjust(p = linmod.pval, method = "BH")]
+all.scenarios[, dicho.fdr := p.adjust(p = dicho.pval, method = "BH")]
+all.scenarios[, logit.fdr := p.adjust(p = logit.pval, method = "BH")]
+
 ```
 
-```{r explore}
-# linmod pval ~ dicho.pval
-# linmod pval ~ logit.pval
+```{r add.func}
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
 
-p1 <- ggplot2(all.scenarios, aes(dicho.pval, logit.pval, colour = as.factor(proz0))) +
-  geom_point() +
-  facet_grid(effekt ~ categart) +
-  theme_minimal()
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+## Plot pvalues against each other
+
+```{r explore}
+# pvalues plotted against linmod pvalues for different effect sizes
+pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_pvalPlots.pdf", width = 21)
+lapply(unique(all.scenarios$effekt), function(x){
+  
+  p1 <- ggplot(all.scenarios[proz0 == 20 & effekt == x, ], aes(linmod.pval, dicho.pval, colour = logit.pval)) +
+    geom_point() +
+    facet_grid(categart ~ categnum, scales = "free") +
+    scale_x_continuous(breaks = pretty_breaks(4)) +
+    scale_y_continuous(breaks = pretty_breaks(10)) +
+    theme_minimal() + 
+    ggtitle(label = paste0("dicho ~ linmod pvalues for effect size of ", x)) +
+    scale_color_distiller(palette="Spectral")
+  
+  p2 <- ggplot(all.scenarios[proz0 == 20 & effekt == x, ], aes(linmod.pval, logit.pval, color = dicho.pval)) +
+    geom_point() +
+    facet_grid(categart ~ categnum, scales = "free") +
+    scale_x_continuous(breaks = pretty_breaks(4)) +
+    scale_y_continuous(breaks = pretty_breaks(10)) +
+    theme_minimal() +
+    ggtitle(label = paste0("logit ~ linmod pvalues for effect size of ", x)) +
+    scale_color_distiller(palette="Spectral")
+  
+  multiplot(p1, p2, cols = 2)
+})
+dev.off()
+
+# dicho.pval ~ logit.pval
+pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_logitVsDicho.pdf", width = 21)
+lapply(unique(all.scenarios$proz0), function(y){
+  lapply(unique(all.scenarios$effekt), function(x){
+  
+ggplot(all.scenarios[proz0 == y & effekt == x, ], aes(logit.pval, dicho.pval, colour = linmod.pval)) +
+    geom_point() +
+    facet_grid(categart ~ categnum, scales = "free") +
+    scale_x_continuous(breaks = pretty_breaks(4)) +
+    scale_y_continuous(breaks = pretty_breaks(5)) +
+    theme_minimal() + 
+    ggtitle(label = "dicho ~ logit pvalues", subtitle = paste0("Effect-size= ", x, " and zero-inflation by ", y, "%")) +
+    scale_color_distiller(palette="Spectral")
+  })
+})
+dev.off()
+
+# filter by pvalue, e.g. only those with high dicho pval etc
+# dicho.pval ~ logit.pval
+pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_logitVsDichoFDRFiltered.pdf", width = 21)
+lapply(unique(all.scenarios$proz0), function(y){
+  lapply(unique(all.scenarios$effekt), function(x){
+  
+ggplot(all.scenarios[proz0 == y & effekt == x & linmod.fdr <= 0.05, ], aes(logit.pval, dicho.pval, colour = linmod.pval)) +
+    geom_point() +
+    facet_grid(categart ~ categnum, scales = "free") +
+    scale_x_continuous(breaks = pretty_breaks(4)) +
+    scale_y_continuous(breaks = pretty_breaks(5)) +
+    theme_minimal() + 
+    ggtitle(label = "dicho ~ logit pvalues", subtitle = paste0("Effect-size= ", x, " and zero-inflation by ", y, "%")) +
+    scale_color_distiller(palette="Spectral")
+  })
+})
+dev.off()
+
+# look at boxplot of pval-distribution (raw/fdr-corrected)
+
+
+
+# number of categories as deciding factor
 
 ```
 

@@ -35,3 +35,6 @@ vignettes/*.pdf
 
 # ignore .Rout files
 *.Rout
+
+# ingore locally computed result files
+/results/*

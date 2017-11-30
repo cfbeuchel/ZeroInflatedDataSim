@@ -309,8 +309,8 @@ ggplot(all.scenarios[effekt == 0.01 & proz0 == 20 & categart == "quantile" & cat
 
 # pvalues not so much
 ggplot(all.scenarios[effekt == 0.01 & proz0 == 20 & categart == "quantile" & categnum == 2, ],
-       aes(x = linmod.pval,
-           y = logit.pval)) +
+       aes(x = -log10(linmod.pval),
+           y = -log10(logit.pval))) +
   geom_point()
 
 # check out other statistics 

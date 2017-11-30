@@ -131,6 +131,9 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
     }
   }
 }
+
+# create a -log10 transformation for scales
+minuslog10_trans <- function() trans_new("minuslog10", function(x) -log10(x), function(x) 10(-x))
 ```
 
 ## Plot pvalues against each other
@@ -140,7 +143,7 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
 pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_dicho&LogitVsLinmodPvalsPerEffekt.pdf", width = 21)
 lapply(unique(all.scenarios$effekt), function(x){
   
-  p1 <- ggplot(all.scenarios[proz0 == 20 & effekt == x, ], aes(linmod.pval, dicho.pval, colour = logit.pval)) +
+  p1 <- ggplot(all.scenarios[proz0 == 20 & effekt == x, ], aes(-log10(linmod.pval), -log10(dicho.pval), colour = logit.pval)) +
     geom_point() +
     facet_grid(categart ~ categnum, scales = "free") +
     scale_x_continuous(breaks = pretty_breaks(4)) +
@@ -149,7 +152,7 @@ lapply(unique(all.scenarios$effekt), function(x){
     ggtitle(label = paste0("dicho ~ linmod pvalues for effect size of ", x)) +
     scale_color_distiller(palette="Spectral")
   
-  p2 <- ggplot(all.scenarios[proz0 == 20 & effekt == x, ], aes(linmod.pval, logit.pval, color = dicho.pval)) +
+  p2 <- ggplot(all.scenarios[proz0 == 20 & effekt == x, ], aes(-log10(linmod.pval), -log10(logit.pval), color = dicho.pval)) +
     geom_point() +
     facet_grid(categart ~ categnum, scales = "free") +
     scale_x_continuous(breaks = pretty_breaks(4)) +
@@ -167,7 +170,7 @@ pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_Zer
 lapply(unique(all.scenarios$proz0), function(y){
   lapply(unique(all.scenarios$effekt), function(x){
   
-ggplot(all.scenarios[proz0 == y & effekt == x, ], aes(logit.pval, dicho.pval, colour = linmod.pval)) +
+ggplot(all.scenarios[proz0 == y & effekt == x, ], aes(-log10(logit.pval), -log10(dicho.pval), colour = linmod.pval)) +
     geom_point() +
     facet_grid(categart ~ categnum, scales = "free") +
     scale_x_continuous(breaks = pretty_breaks(4)) +
@@ -181,11 +184,14 @@ dev.off()
 
 # filter by pvalue, e.g. only those with high dicho pval etc
 # dicho.pval ~ logit.pval
-pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_logitVsDichoPvalsPerEffect&0infl&FDRFiltered", width = 21)
+pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_logitVsDichoPvalsPerEffect&0infl&PvalFiltered", width = 21)
 lapply(unique(all.scenarios$proz0), function(y){
   lapply(unique(all.scenarios$effekt), function(x){
   
-ggplot(all.scenarios[proz0 == y & effekt == x & linmod.fdr <= 0.05, ], aes(logit.pval, dicho.pval, colour = linmod.pval)) +
+ggplot(all.scenarios[proz0 == y & effekt == x & linmod.pval <= 0.05, ],
+       aes(y = -log10(logit.pval),
+           x = -log10(dicho.pval),
+           colour = linmod.pval)) +
     geom_point() +
     facet_grid(categart ~ categnum, scales = "free") +
     scale_x_continuous(breaks = pretty_breaks(4)) +
@@ -198,16 +204,18 @@ ggplot(all.scenarios[proz0 == y & effekt == x & linmod.fdr <= 0.05, ], aes(logit
 dev.off()
 
 # number of categories as deciding factor
-all.scenarios[linmod.fdr <= 0.05, sum(logit.fdr <= 0.05), by = .(categart,categnum)]
-all.scenarios[linmod.fdr <= 0.05, sum(dicho.fdr <= 0.05), by = .(categart,categnum)]
+all.scenarios[linmod.pval <= 0.05, sum(logit.pval <= 0.05), by = .(categart,categnum)]
+all.scenarios[linmod.pval <= 0.05, sum(dicho.pval <= 0.05), by = .(categart,categnum)]
 ```
 
 ```{r boxplots}
 # based on fdr-corrected linmod pvals, show boxplot of pvalue distribution of all three methods
-test <- melt(data = all.scenarios[linmod.fdr <= 0.05, ], id.vars = c("effekt", "proz0", "categart", "categnum"), measure.vars = c("dicho.pval", "linmod.pval", "logit.pval"))
+test <- melt(data = all.scenarios[linmod.pval <= 0.05, ],
+             id.vars = c("effekt", "proz0", "categart", "categnum"),
+             measure.vars = c("dicho.pval", "linmod.pval", "logit.pval"))
 
-# for all linmod.fdr <= 0.05 plot the pvalue distribution for each effekt and zero-inflation percentage
-pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_logitVsDichoPvalsBoxPlotByLinmodFDR005.pdf")
+# for all linmod.pval <= 0.05 plot the pvalue distribution for each effekt and zero-inflation percentage
+pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_logitVsDichoPvalsBoxPlotByLinmod005.pdf")
 
 # outer loop for proz0
 lapply(unique(all.scenarios$proz0), function(y){
@@ -215,22 +223,24 @@ lapply(unique(all.scenarios$proz0), function(y){
   # inner loop for effect size
   lapply(unique(all.scenarios$effekt), function(x){
     
-    ggplot(test[proz0 == y & effekt == x], aes(x = as.factor(categnum), y = value, fill = variable)) + 
+    ggplot(test[proz0 == y & effekt == x], aes(x = as.factor(categnum), y = -log10(value), fill = variable)) + 
       geom_boxplot() + coord_flip() + 
       facet_wrap( ~ categart, scales = "free_x") + 
       scale_fill_brewer(palette="Spectral") +
-      ggtitle(label = "dicho, logit & linmod pvalues for linmod.pval FDR <= 0.05", subtitle = paste0("Effect-size = ", x, " and zero-inflation by ", y, "%")) +
+      ggtitle(label = "dicho, logit & linmod pvalues for linmod.pval <= 0.05",
+              subtitle = paste0("Effect-size = ", x, " and zero-inflation by ", y, "%")) +
       theme_minimal()
   })
 })
 
 dev.off()
 
-
 # show boxplot of pvalue distribution of all three methods for all pvalues
-test.2 <- melt(data = all.scenarios, id.vars = c("effekt", "proz0", "categart", "categnum"), measure.vars = c("dicho.pval", "linmod.pval", "logit.pval"))
+test.2 <- melt(data = all.scenarios,
+               id.vars = c("effekt", "proz0", "categart", "categnum"),
+               measure.vars = c("dicho.pval", "linmod.pval", "logit.pval"))
 
-# for all linmod.fdr <= 0.05 plot the pvalue distribution 
+# for all pvalues: plot the pvalue distribution 
 pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_logitVsDichoBoxRawPvals.pdf")
 
 # outer loop for proz0
@@ -239,22 +249,30 @@ lapply(unique(all.scenarios$proz0), function(y){
   # inner loop for effect size
   lapply(unique(all.scenarios$effekt), function(x){
     
-    ggplot(test.2[proz0 == y & effekt == x], aes(x = as.factor(categnum), y = value, fill = variable)) + 
-      geom_boxplot() + coord_flip() + 
-      facet_wrap( ~ categart, scales = "free_x") + 
+    ggplot(test.2[proz0 == y & effekt == x],
+           aes(x = as.factor(categnum),
+               y = value,
+               fill = variable)) + 
+      geom_boxplot() +
+      coord_flip() + 
+      facet_wrap( ~ categart,
+                  scales = "free_x") + 
       scale_fill_brewer(palette="Spectral") +
-      ggtitle(label = "dicho, logit & linmod pvalues", subtitle = paste0("Effect-size = ", x, " and zero-inflation by ", y, "%")) +
+      ggtitle(label = "dicho, logit & linmod pvalues",
+              subtitle = paste0("Effect-size = ", x, " and zero-inflation by ", y, "%")) +
       theme_minimal()
   })
 })
 
 dev.off()
 
-# boxplot of FDR pvals for all linmod FDR <= 0.05 
-test.3 <- melt(data = all.scenarios[linmod.fdr <= 0.05, ], id.vars = c("effekt", "proz0", "categart", "categnum"), measure.vars = c("dicho.fdr", "linmod.fdr", "logit.fdr"))
+# boxplot of FDR pvals for all linmod pvals <= 0.05 
+test.3 <- melt(data = all.scenarios[linmod.pval <= 0.05, ],
+               id.vars = c("effekt", "proz0", "categart", "categnum"),
+               measure.vars = c("dicho.pval", "linmod.pval", "logit.pval"))
 
 # for all linmod.fdr <= 0.05 plot the pvalue distribution for each effekt and zero-inflation percentage
-pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_logitVsDichoFDRPvalsBoxPlotByLinmodFDR005.pdf")
+pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_logitVsDichoPvalsBoxPlotByLinmod005.pdf")
 
 # outer loop for proz0
 lapply(unique(all.scenarios$proz0), function(y){
@@ -262,11 +280,17 @@ lapply(unique(all.scenarios$proz0), function(y){
   # inner loop for effect size
   lapply(unique(all.scenarios$effekt), function(x){
     
-    ggplot(test.3[proz0 == y & effekt == x], aes(x = as.factor(categnum), y = value, fill = variable)) + 
-      geom_boxplot() + coord_flip() + 
-      facet_wrap( ~ categart, scales = "free_x") + 
-      scale_fill_brewer(palette="Spectral") +
-      ggtitle(label = "dicho, logit & linmod FDR pvalues for linmod.pval FDR <= 0.05", subtitle = paste0("Effect-size = ", x, " and zero-inflation by ", y, "%")) +
+    ggplot(test.3[proz0 == y & effekt == x],
+           aes(x = as.factor(categnum),
+               y = -log10(value),
+               fill = variable)) + 
+      geom_boxplot() +
+      # coord_trans(y = "minuslog10") + 
+      coord_flip() +
+      facet_wrap( ~ categart) + 
+      scale_fill_brewer(palette = "Spectral") +
+      ggtitle(label = "dicho, logit & linmod pvalues for linmod.pvalues <= 0.05",
+              subtitle = paste0("Effect-size = ", x, " and zero-inflation by ", y, "%")) +
       theme_minimal()
   })
 })
@@ -278,19 +302,28 @@ dev.off()
 # logit seems to outperform dicho glm
 # look more closely at logit vs lm
 # betas correlate well
-ggplot(all.scenarios[effekt == 0.01 & proz0 == 20 & categart == "quantile" & categnum == 2, ], aes(x = linmod.beta, y = logit.beta)) +
+ggplot(all.scenarios[effekt == 0.01 & proz0 == 20 & categart == "quantile" & categnum == 2, ],
+       aes(x = linmod.beta,
+           y = logit.beta)) +
   geom_point()
 
 # pvalues not so much
-ggplot(all.scenarios[effekt == 0.01 & proz0 == 20 & categart == "quantile" & categnum == 2, ], aes(x = linmod.pval, y = logit.pval)) +
+ggplot(all.scenarios[effekt == 0.01 & proz0 == 20 & categart == "quantile" & categnum == 2, ],
+       aes(x = linmod.pval,
+           y = logit.pval)) +
   geom_point()
 
 # check out other statistics 
-test.4 <- melt(data = all.scenarios[linmod.fdr <= 0.05, ], id.vars = c("effekt", "proz0", "categart", "categnum"), measure.vars = c("linmod.fdr", "logit.fdr", "logit.pval", "linmod.pval", "linmod.r2", "linmod.beta", "logit.beta"))
+test.4 <- melt(data = all.scenarios[linmod.fdr <= 0.05, ],
+               id.vars = c("effekt", "proz0", "categart", "categnum"),
+               measure.vars = c("linmod.fdr", "logit.fdr", "logit.pval", "linmod.pval", "linmod.r2", "linmod.beta", "logit.beta"))
 
 pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171130_logitPvalsByEffectPerCategory.pdf", height = 14)
 # look at logit pvals 
-ggplot(test.4[proz0 == 20 & effekt %in% c(0.01, 0.02, 0.05) & variable == "logit.pval", ], aes(y= value, x = as.factor(categnum), fill = as.factor(effekt))) +
+ggplot(test.4[proz0 == 20 & effekt %in% c(0.01, 0.02, 0.05) & variable == "logit.pval", ],
+       aes(y= value,
+           x = as.factor(categnum),
+           fill = as.factor(effekt))) +
   geom_boxplot() +
   facet_grid( ~ as.factor(categart)) + 
   coord_flip(ylim = c(0,0.1)) +

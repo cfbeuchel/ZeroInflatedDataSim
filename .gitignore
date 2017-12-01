@@ -40,6 +40,7 @@ vignettes/*.pdf
 /results/
 /RCode/_archive/
 /plots/
+*/_archive/
 
 # ignore .html outputs
 *.html

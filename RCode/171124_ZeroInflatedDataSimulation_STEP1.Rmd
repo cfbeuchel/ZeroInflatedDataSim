@@ -134,6 +134,9 @@ res <- mclapply(szenarien$num,  function(x) {
   # fit lm
   linmod <- df[, summary(lm(y ~ x))]
   
+  # add spearman rank correlation to compare with Theis
+  cor <- tidy(df[, cor.test(x = x, y = y, method = "pear")])
+  
   # add summary statistics
   res <- data.table(num = num,
                     realization = real,
@@ -142,6 +145,8 @@ res <- mclapply(szenarien$num,  function(x) {
                     proz0 = proz0,
                     categart = categart,
                     categnum = categnum,
+                    pearson.cor = cor$estimate,
+                    pearson.cor.pval = cor$p.value,
                     linmod.r2 = linmod$r.squared,
                     linmod.pval = linmod$coefficients["x","Pr(>|t|)"],
                     linmod.beta = linmod$coefficients["x","Estimate"])

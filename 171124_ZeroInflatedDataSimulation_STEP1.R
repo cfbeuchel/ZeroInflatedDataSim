@@ -1,14 +1,4 @@
----
-output:
-  html_document:
-    toc: true
-    number_sections: false
-    toc_depth: 3
-author: "Carl Beuchel"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
----
-
-```{r knitr, cache = F, results = "markup", echo = T, warning = T}
+## ----knitr, cache = F, results = "markup", echo = T, warning = T---------
 # start with a clean workspace
 rm(list=ls())
 gc()
@@ -18,13 +8,8 @@ knitr::opts_chunk$set(cache = F, results = "hide", echo = T ,include = T)
 
 # what should the output file be called?
 filename = "STEP 1: Zero-inflated data simulation"
-```
 
-# `r filename`
-***
-This script is a small data simulation to help figure out an appropriate data transformation withouth loosing too much statistical power in the subsequent regression analyses.
-
-```{r initiate, cache = F, results = "hide", echo = F}
+## ----initiate, cache = F, results = "hide", echo = F---------------------
 # choose correct working directory
 r_on_server <- T
 if (r_on_server == T) {
@@ -69,11 +54,8 @@ for (i in c(
 )) {
   suppressPackageStartupMessages(library(i, character.only = TRUE))
 }
-```
 
-## Data simulation and setup
-
-```{r setup}
+## ----setup---------------------------------------------------------------
 # code by HKirsten (holgerman)
 # set parameters for simulation, e.g. effect size, n...
 set.seed(0815)
@@ -95,11 +77,8 @@ categart = c("quantile", "bereiche")
 
 # number of categories
 categnum = c(2:10, 20, 30, 40, 50)
-```
 
-## Create scenarios
-
-```{r create.scenarios}
+## ----create.scenarios----------------------------------------------------
 # create dt with all scenario combinations
 szenarien <- data.table(expand.grid(effekte = effekte,
                                     n = n,
@@ -108,11 +87,8 @@ szenarien <- data.table(expand.grid(effekte = effekte,
                                     categnum = categnum,
                                     realization = 1:realisierungen))
 szenarien[,num := 1:.N]
-```
 
-## Create data and run lm
-
-```{r test.data}
+## ----test.data-----------------------------------------------------------
 # apply over each szenario
 res <- mclapply(szenarien$num,  function(x) {
   
@@ -213,17 +189,15 @@ res <- mclapply(szenarien$num,  function(x) {
 # bind everything together
 all.scenarios <- rbindlist(res)
 
-```
 
-```{r save}
+## ----save----------------------------------------------------------------
 # Save for use in STEP2
 write.table(x = all.scenarios,
             file = paste0(pathwd, "/results/",
                           format(Sys.time(), '%y%m%d'),
                           "_SimulationResults.csv"),
             sep = "\t", row.names = F)
-```
 
-```{r SessionInfo, echo=F, results='markup'}
+## ----SessionInfo, echo=F, results='markup'-------------------------------
 sessionInfo()
-```            
+

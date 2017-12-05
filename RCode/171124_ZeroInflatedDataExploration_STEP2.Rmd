@@ -76,13 +76,7 @@ for (i in c(
 
 ```{r load}
 # load the simuation results
-all.scenarios <- fread("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/results/171201_SimulationResults.csv")
-
-# add fdr
-all.scenarios[, linmod.fdr := p.adjust(p = linmod.pval, method = "BH")]
-all.scenarios[, dicho.fdr := p.adjust(p = dicho.pval, method = "BH")]
-all.scenarios[, logit.fdr := p.adjust(p = logit.pval, method = "BH")]
-
+all.scenarios <- fread("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/results/171204_SimulationResults.csv")
 ```
 
 ### Additional Functions
@@ -317,24 +311,23 @@ ggplot(all.scenarios[effekt == 0.01 & proz0 == 20 & categart == "quantile" & cat
 
 
 # über realisationen mitteln
-all.scenarios[, .N, by = realization]
-test.6 <- melt(data = all.scenarios,
-               id.vars = c("effekt", "proz0", "categart", "categnum", "realization"),
-               measure.vars = c("logit.pval"))
+test.6 <- all.scenarios[, mean(logit.pval), by = .(effekt, proz0, categart, categnum)]
+q.vs.b <- dcast.data.table(data = test.6, formula = effekt + proz0 + categnum ~ categart, value.var = "V1")
 
-q.vs.b <- dcast.data.table(data = test.6, formula = effekt + proz0 + categnum + realization ~ categart, value.var = "value")
-
-# pvalues not so much
+# plot bereiche ~ quantile
 ggplot(q.vs.b,
        aes(x = -log10(bereiche),
            y = -log10(quantile),
            color = as.factor(categnum),
            pch = as.factor(proz0))) +
         facet_wrap(~effekt, scale = "free") + 
-  geom_point(alpha = 0.2) + 
-  geom_abline(intercept = 0, slope = 1)+ 
-  geom_smooth(method = "lm")
+  geom_point(alpha = 0.7) + 
+  geom_abline(intercept = 0, slope = 1)
 
+# results show little difference between the two in terms of power
+
+  
+  
 # check out other statistics 
 test.4 <- melt(data = all.scenarios[linmod.fdr <= 0.05, ],
                id.vars = c("effekt", "proz0", "categart", "categnum"),
@@ -354,13 +347,32 @@ ggplot(test.4[proz0 == 20 & effekt %in% c(0.01, 0.02, 0.05) & variable == "logit
 dev.off()
 ```
 
-# Compare with rank-correlation
+```{r over.realizations}
+ggplot(test.6, aes(x = categnum, y = -log10(V1), pch = as.factor(categart), color = factor(proz0))) +
+  facet_wrap(~ effekt, scale = "free") +
+  geom_smooth(aes(group = paste(factor(proz0), categart), lty = categart), alpha = 0.2, fullrange=T, span = 1.5) +
+  geom_point(size = 2.5) +
+  theme_minimal()
+
+
+
+```
+
+
+### Compare with rank-correlation
+
+After I determined the optiomal szenario I can compare the results with rank correlation
 
 ```{r compare.rank}
-# boxplot of pvals for all linmod pvals <= 0.05 
-test.5 <- melt(data = all.scenarios[linmod.pval <= 0.05, ],
+# boxplot of pvals pearson
+all.scenarios[ , lapply(.SD,function(x) mean(x)), by = .(effekt, proz0, categart, categnum),
+               .SDcols = c("logit.pval", "pearson.cor.pval", "effekt", "proz0", "categart", "categnum")]
+
+
+test.5 <- melt(data = all.scenarios,
                id.vars = c("effekt", "proz0", "categart", "categnum"),
                measure.vars = c("logit.pval", "pearson.cor.pval"))
+dcast.data.table(data = test.5, formula = effekt + proz0 + categart + categnum ~ variable, value.var = "value")
 
 # for all linmod.pval <= 0.05 plot the pvalue distribution for each effekt and zero-inflation percentage
 pdf("/mnt/ifs1_projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim/plots/171128_logitVsPearsonPvalsBoxPlotByLinmod005.pdf")

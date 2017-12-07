@@ -111,7 +111,7 @@ res <- mclapply(szenarien$num,  function(x) {
   linmod <- df[, summary(lm(y ~ x))]
   
   # add spearman rank correlation to compare with Theis
-  cor <- tidy(df[, cor.test(x = x, y = y, method = "pear")])
+  cor <- tidy(df[, cor.test(x = x, y = y, method = "spearman")])
   
   # add summary statistics
   res <- data.table(num = num,

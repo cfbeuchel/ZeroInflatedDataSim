@@ -45,5 +45,5 @@ vignettes/*.pdf
 # ignore .html outputs
 *.html
 
-# ignore the .R output created by purl()
-*.R
+# ignore the .R output created by purl() in /RCode
+/RCode/*.R

@@ -16,7 +16,7 @@ rm(list=ls())
 gc()
 
 # Set the global knitr options
-knitr::opts_chunk$set(cache = F, results = "hide", echo = F ,include = T)
+knitr::opts_chunk$set(cache = F, results = "hide", echo = F ,include = T, warning = F, message = F)
 
 # what should the output file be called?
 filename = "STEP 2: Zero-inflated data exploration"
@@ -132,13 +132,13 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
 minuslog10_trans <- function() trans_new("minuslog10", function(x) -log10(x), function(x) 10(-x))
 
 # theme from 
-apatheme = theme_bw()+
-  theme(panel.grid.major=element_blank(),
-        panel.grid.minor=element_blank(),
-        panel.border=element_blank(),
-        axis.line=element_line(),
-        text=element_text(family='Times'),
-        legend.position='none')
+my_theme = theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(),
+        text = element_text(family = 'Times'),
+        legend.position = 'right')
 
 ```
 
@@ -158,7 +158,13 @@ For the proportional odds model, the number of categories (`categnum`) and the w
 
 For the data simulation, the parameters were the percentage of inflated zero-values (`proz0`) and the effekt size (`effekt`) varied. For each scenario, 5000 sampels were drawn. Each scenario was computed 1000 times. 
 
-```{r question.1}
+#### Dichotomization vs. proportional odds model
+
+First it needs to be established, whether the proportional odds approach performs better than dichotomization. Intuitively it should, but we can test this by plotting the p-values of the approaches against each other and observe their properties depending on the different parameters. 
+
+This first plot, plotting all p-values only shows, that the the percentage of zero-inflated values has a high impact on the distribution depending on the effect size. For small effect-sizes, which are the most interesting for our study, a distinction seems difficult. However, the plot let's us hypothesize, that that the proportional odds model outperforms the dichotomization model with increasing effect-size and a lower percentage of zero-inflated values. 
+
+```{r question.1.1}
 # First question: Dicho vs Logit
 # plot all dicho vs. prop odds pvals
 p1 <- ggplot(all.scenarios, aes(-log10(dicho.pval),
@@ -170,10 +176,17 @@ p1 <- ggplot(all.scenarios, aes(-log10(dicho.pval),
   geom_point() +
   geom_abline(intercept = 0, slope = 1, lty = 2) + 
   facet_wrap(~effekt , scales = "free") + 
-  theme_minimal()
+  scale_y_continuous(breaks = pretty_breaks(4)) +
+  scale_x_continuous(breaks = pretty_breaks(4)) +
+  my_theme
 
+# plot dicho vs logit pvals
 p1
+```
 
+Taking the average p-values over all realizations provides a clearer picture for the differences for small effect-sizes. The proportional odds approach clearly outperforms dichotomization. Only when the zero-inflation is as high as 80%, the performances are similar. The table shows the sum of p-values for each approach <= 0.05 for each combination of number of categories and type of category.
+
+```{r question.1.2}
 # plot mean (over realizations) dicho vs. prop odds pvals
 # über realisationen mitteln für Übersichtlichkeit
 test.1 <- all.scenarios[, lapply(.SD, mean), by = .(effekt, proz0, categart, categnum)]
@@ -186,9 +199,12 @@ p2 <- ggplot(test.1, aes(x = -log10(dicho.pval),
   geom_point() +
   geom_abline(intercept = 0, slope = 1, lty = 2) + 
   facet_wrap(~effekt , scales = "free") + 
-  theme_minimal()
+  scale_y_continuous(breaks = pretty_breaks(4)) +
+  scale_x_continuous(breaks = pretty_breaks(4)) +
+  my_theme
 
-p2
+# plot
+# p2
 
 # same as p2 but with different symbols etc.
 p2.5 <- ggplot(test.1, aes(-log10(dicho.pval),
@@ -202,22 +218,19 @@ p2.5 <- ggplot(test.1, aes(-log10(dicho.pval),
   scale_x_continuous(breaks = pretty_breaks(4)) +
   scale_y_continuous(breaks = pretty_breaks(4)) +
   geom_abline(intercept = 0, slope = 1, lty = 2) +
-  theme_minimal() + 
   scale_color_distiller(palette="Spectral") +
   scale_alpha_manual(values = c(0.3, 0.5, 0.9)) + 
-  theme(panel.grid.major=element_blank(),
-         panel.grid.minor=element_blank(),
-         panel.border=element_blank(),
-         axis.line=element_line(),
-         text=element_text(family='Times'),
-         legend.position ="right")
-
+  my_theme
+  
 p2.5
 
 # number of categories as deciding factor
-kable(all.scenarios[linmod.pval <= 0.05, sum(logit.pval <= 0.05), by = .(categart,categnum)])
-kable(all.scenarios[linmod.pval <= 0.05, sum(dicho.pval <= 0.05), by = .(categart,categnum)])
+kable(all.scenarios[ , lapply(.SD, function(x) sum(x <= 0.05)), by = .(categart,categnum), .SDcols = c("linmod.pval", "logit.pval", "dicho.pval")])
+```
 
+Additionally we look at the performance of the prop-odds model against a linear model approach. We can see that, even though the normality assumtion of the linear model is violated, the linear model outperforms the prop-odds approach, increasing with percentage of zeor-inflation. 
+
+```{r question.1.3}
 # plot mean (over realizations) linmod vs. prop odds pvals
 # how does logit model compare to linmod?
 p3 <- ggplot(test.1, aes(x = -log10(linmod.pval),
@@ -229,10 +242,13 @@ p3 <- ggplot(test.1, aes(x = -log10(linmod.pval),
   geom_point() +
   geom_abline(intercept = 0, slope = 1, lty = 2) + 
   facet_wrap(~effekt , scales = "free") + 
-  theme_minimal()
-
+  my_theme
 p3
 ```
+
+#### Optimum for number of categories
+
+Plotting the p-values against the number of categories reveals a maximum towards a higher number of categories. However, the slope might be distorted due to the higher amount of different categories <10. Looking at the categories >10 only reveals no increased model performance when the number of categories exeeds 10. Again, the interpretation of the results for small effect sizes proves difficult, but the data suggests no increasded power upwards of 10 categories. 
 
 ```{r question.2}
 # second question: what number of categories is optimal?
@@ -243,12 +259,54 @@ p4 <- ggplot(test.1,
                  pch = categart,
                  color = factor(proz0))) +
   facet_wrap(~ effekt, scale = "free") +
-  geom_smooth(aes(group = paste(factor(proz0), categart), lty = categart), alpha = 0.2, fullrange=T, span = 1.5) +
+  geom_smooth(method = "loess", aes(group = paste(factor(proz0), categart), lty = categart), alpha = 0.2, fullrange=T, span = 1.5) +
   geom_point(size = 2.5) +
-  theme_minimal()
+  scale_x_continuous(breaks = pretty_breaks(4)) +
+  scale_y_continuous(breaks = pretty_breaks(4)) +
+  scale_color_brewer(palette = "Set1") +
+  my_theme
 
+# all categnum
 p4
+
+# large categories
+p4.1 <- ggplot(test.1[categnum %in% c(10,20,30,40,50),],
+             aes(x = categnum,
+                 y = -log10(logit.pval),
+                 pch = categart,
+                 color = factor(proz0))) +
+  facet_wrap(~ effekt, scale = "free") +
+  geom_smooth(method = "loess", aes(group = paste(factor(proz0), categart), lty = categart), alpha = 0.2, fullrange = T, span = 1.5) +
+  geom_point(size = 2.5) +
+  scale_x_continuous(breaks = pretty_breaks(4)) +
+  scale_y_continuous(breaks = pretty_breaks(4)) +
+  scale_color_brewer(palette = "Set1") +
+  my_theme
+
+# only look at higher number of categories
+p4.1
+
+# look at categories 2:10
+p4.2 <- ggplot(test.1[categnum %in% 2:10,],
+             aes(x = categnum,
+                 y = -log10(logit.pval),
+                 pch = categart,
+                 color = factor(proz0))) +
+  facet_wrap(~ effekt, scale = "free") +
+  geom_smooth(method = "loess", aes(group = paste(factor(proz0), categart), lty = categart), alpha = 0.2, fullrange = T, span = 1.5) +
+  geom_point(size = 2.5) +
+  scale_x_continuous(breaks = pretty_breaks(4)) +
+  scale_y_continuous(breaks = pretty_breaks(4)) +
+  scale_color_brewer(palette = "Set1") +
+  my_theme
+
+# only look at higher number of categories
+p4.2
 ```
+
+#### Categories based on quantiles or range
+
+The previous plots suggest that the categories based on quantiles perform better in terms of mean p-value for each category, which is again dependent on effect size and percentage of zero-inflation. Plotting the, averaged over all realizations of the model, -log10 p-values against each other reveal a slight advantage of quantile-defined categories, at least for larger effect sizes. For the effect sizes of 0.01 and 0.02 in 80% zero inflated data, no conclusion can be drawn from the data. However, the general trend of the simulation suggests a slight advantage of quantiles over ranges for subdividing the data into categories  
 
 ```{r question.3}
 # third question: Bereiche oder Quantile
@@ -258,15 +316,19 @@ p5 <- ggplot(test.2,
        aes(x = -log10(bereiche),
            y = -log10(quantile),
            color = categnum,
-           pch = as.factor(proz0))) +
+           size = as.factor(proz0))) +
   facet_wrap(~effekt, scale = "free") + 
-  geom_point(alpha = 0.7) + 
+  geom_point(alpha = 1) +
   geom_abline(intercept = 0, slope = 1) + 
   scale_color_distiller(palette="Spectral") + 
   scale_alpha_manual(values = c(0.3,0.9))
 
 p5
 ```
+
+#### Comparison with Pearson's Rank Correlation
+
+Comparing the results of the prop-odds model with rank correlation results show the advantage of rank-correlation, especially when the zero-inflation increases. The boxplots compare the p-value distribution of all approaches.  
 
 ```{r question.4}
 # comparison to rank
@@ -279,8 +341,10 @@ p6 <- ggplot(test.1, aes(x = -log10(pearson.cor.pval),
                          alpha = rev(categnum))) + 
   geom_point() +
   geom_abline(intercept = 0, slope = 1, lty = 2) + 
+  scale_color_brewer(palette="Set1") + 
+  scale_alpha_continuous(range = c(0.3, 1)) +
   facet_wrap(~effekt , scales = "free") + 
-  theme_minimal()
+  my_theme
 
 p6
 
@@ -312,7 +376,12 @@ lapply(unique(all.scenarios$proz0), function(y){
 })
 ```
 
+#### Comparison of effect sizes between linear model and proportional odds model
+
+Plotting the average effect sizes from the linear model and the prop-odds model reveal a drastic overestimation of effect size with increasing effect size in the data by the prop-odds model. 
+
 ```{r question.5}
+# define
 p8 <- ggplot(test.1,
        aes(x = linmod.beta,
            y = logit.beta,
@@ -323,16 +392,13 @@ p8 <- ggplot(test.1,
   geom_point() +
   geom_abline(intercept = 0, slope = 1, lty = 2, col = "black") +
   # facet_wrap( ~ , scales = "fixed") +
-  scale_color_brewer(palette = "Spectral") +
+  scale_color_brewer(palette = "Set1") +
+  scale_x_continuous(breaks = pretty_breaks(6)) +
+  scale_y_continuous(breaks = pretty_breaks(9)) +
   scale_alpha_manual(values = c(0.3, 0.5, 0.9)) + 
-  theme_minimal() + 
-  theme(panel.grid.major=element_blank(),
-         panel.grid.minor=element_blank(),
-         panel.border=element_blank(),
-         axis.line=element_line(),
-         text=element_text(family='Times'),
-         legend.position ="right")
+  my_theme
 
+# plot
 p8
 
 ```

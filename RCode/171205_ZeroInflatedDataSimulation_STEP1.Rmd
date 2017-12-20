@@ -65,7 +65,8 @@ for (i in c(
   "broom",
   "ordinal",
   "MASS",
-  "parallel"
+  "parallel",
+  "CarlHelpR"
 )) {
   suppressPackageStartupMessages(library(i, character.only = TRUE))
 }
@@ -132,10 +133,10 @@ res <- mclapply(szenarien$num,  function(x) {
   df[, y := x * effekt + rnorm(n) * (1 - effekt) + 2]
   
   # fit lm
-  linmod <- df[, summary(lm(y ~ x))]
+  linmod.full.data <- df[, summary(lm(y ~ x))]
   
   # add spearman rank correlation to compare with Theis
-  cor <- tidy(df[, cor.test(x = x, y = y, method = "spearman")])
+  cor.full.data <- tidy(df[, cor.test(x = x, y = y, method = "spearman")])
   
   # add summary statistics
   res <- data.table(num = num,
@@ -145,11 +146,11 @@ res <- mclapply(szenarien$num,  function(x) {
                     proz0 = proz0,
                     categart = categart,
                     categnum = categnum,
-                    pearson.cor = cor$estimate,
-                    pearson.cor.pval = cor$p.value,
-                    linmod.r2 = linmod$r.squared,
-                    linmod.pval = linmod$coefficients["x","Pr(>|t|)"],
-                    linmod.beta = linmod$coefficients["x","Estimate"])
+                    spearman.cor.full.data = cor.full.data$estimate,
+                    spearman.cor.pval.full.data = cor.full.data$p.value,
+                    linmod.r2.full.data = linmod.full.data$r.squared,
+                    linmod.pval.full.data = linmod.full.data$coefficients["x","Pr(>|t|)"],
+                    linmod.beta.full.data = linmod.full.data$coefficients["x","Estimate"])
   
   # create zero-inflated y-derived data
   df[, y.0infl := y]
@@ -160,6 +161,20 @@ res <- mclapply(szenarien$num,  function(x) {
   # check
   # df[,.N,y.0infl==0]
   # hist(df$y.0infl, breaks = 50)
+  
+  # add lm and spearman-cor for zero-inflated data
+  # fit lm
+  linmod.zero.inflated <- df[, summary(lm(y.0infl ~ x))]
+  
+  # add spearman rank correlation to compare with Theis
+  cor.zero.inflated <- tidy(df[, cor.test(x = x, y = y.0infl, method = "spearman")])
+  
+  # enter results
+  res[, `:=`(spearman.cor.zero.inflated = cor.zero.inflated$estimate,
+             spearman.cor.pval.zero.inflated = cor.zero.inflated$p.value,
+             linmod.r2.zero.inflated = linmod.zero.inflated$r.squared,
+             linmod.pval.zero.inflated = linmod.zero.inflated$coefficients["x","Pr(>|t|)"],
+             linmod.beta.zero.inflated = linmod.zero.inflated$coefficients["x","Estimate"])]
   
   # sort by y (category)
   setorder(df, y)
@@ -217,11 +232,9 @@ all.scenarios <- rbindlist(res)
 
 ```{r save}
 # Save for use in STEP2
-write.table(x = all.scenarios,
-            file = paste0(pathwd, "/results/",
-                          format(Sys.time(), '%y%m%d'),
-                          "_SimulationResults.csv"),
-            sep = "\t", row.names = F)
+save_csv_carl(file = all.scenarios,
+              file_name = "SimulationResultsForSTEP2",
+              subfolder = "results")
 ```
 
 ```{r SessionInfo, echo=F, results='markup'}

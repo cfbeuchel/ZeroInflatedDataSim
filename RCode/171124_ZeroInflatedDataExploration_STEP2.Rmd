@@ -5,7 +5,7 @@ output:
     toc_float: 
       collapsed: false
       smooth_scroll: false
-    number_sections: false
+    number_sections: true
     toc_depth: 4
 author: "Carl Beuchel"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -51,7 +51,7 @@ for (i in c(
 }
 ```
 
-## Data simulation and setup
+# Data simulation and setup
 
 ```{r load}
 # load the simuation results
@@ -59,7 +59,7 @@ newest.results <- newest_file(look_for = "SimulationResultsForSTEP2", subfolder 
 all.scenarios <- fread(newest.results)
 ```
 
-## Exploratory plots
+# Exploratory plots
 
 There are a few descisions that I need to make:
  * Bereiche or Quantile?
@@ -74,7 +74,7 @@ For the proportional odds model, the number of categories (`categnum`) and the w
 
 For the data simulation, the parameters were the percentage of inflated zero-values (`proz0`) and the effekt size (`effekt`) varied. For each scenario, 5000 sampels were drawn. Each scenario was computed 1000 times. 
 
-### Dichotomization vs. proportional odds model
+## Dichotomization vs. proportional odds model
 
 First it needs to be established, whether the proportional odds approach performs better than dichotomization. Intuitively it should, but we can test this by plotting the p-values of the approaches against each other and observe their properties depending on the different parameters. 
 
@@ -151,7 +151,7 @@ kable(all.scenarios[ , lapply(.SD, function(x) sum(x <= 0.05)), by = .(categart,
                                  "dicho.pval")])
 ```
 
-### Linear model vs. proportional odds model
+## Linear model vs. proportional odds model
 
 Additionally we look at the performance of the prop-odds model against a linear model approach. We can see that the approaches compare in Terms of Power. The loss of information in the proportional odds approach pit against the violation of the normality-assumption of the linear model approach. 
 
@@ -172,7 +172,7 @@ p3 <- ggplot(test.1, aes(x = -log10(linmod.pval.zero.inflated),
 p3
 ```
 
-### Optimum for number of categories
+## Optimum for number of categories
 
 Plotting the p-values against the number of categories reveals a maximum towards a higher number of categories. However, the slope might be distorted due to the higher amount of different categories <10. Looking at the categories >10 only reveals no increased model performance when the number of categories exeeds 10. Again, the interpretation of the results for small effect sizes proves difficult, but the data suggests no increasded power upwards of 10 categories. 
 
@@ -230,7 +230,7 @@ p4.2 <- ggplot(test.1[categnum %in% c(2:10,20), ],
 p4.2
 ```
 
-### Categories based on quantiles or range
+## Categories based on quantiles or range
 
 The previous plots suggest that the categories based on quantiles perform better in terms of mean p-value for each category, which is again dependent on effect size and percentage of zero-inflation. Plotting the, averaged over all realizations of the model, -log10 p-values against each other reveal a slight advantage of quantile-defined categories, at least for larger effect sizes. For the effect sizes of 0.01 and 0.02 in 80% zero inflated data, no conclusion can be drawn from the data. However, the general trend of the simulation suggests a slight advantage of quantiles over ranges for subdividing the data into categories  
 
@@ -252,7 +252,7 @@ p5 <- ggplot(test.2,
 p5
 ```
 
-### Additional comparisons
+## Additional comparisons
 
 Comparing the results of the, always fit with zero-inflated data, prop-odds model fit with the, either fit to the full or zero-inflated data set, rank correlation and linear model results The boxplots compare the p-value distribution of all approaches.  
 
@@ -276,7 +276,7 @@ q_4 <- function(x,y) {
 }
 ```
 
-#### Linear model and Spearman's correlation
+### Linear model and Spearman's correlation
 
 First we check what influence the zero-inflation has on the linear model and spearman correlation power. We plot p-values of both approaches with the full and the zero-inflated data against each other. We can see that the the linear model sufferes more from the loss of data even at 20% of zero-values, while the rank correlation starts to suffer visibly at 50% zero-inflation.
 
@@ -298,7 +298,7 @@ p4.1.1 <- q_4(x = "spearman.cor.pval.zero.inflated", y = "linmod.pval.zero.infla
 p4.1.1
 ```
 
-#### Linear model and proportional odds model
+### Linear model and proportional odds model
 
 While the optimal approach of fitting a linear model with the full data set remains superior to the prorportional odds model with zero-inflated data, the advantage all but disappears when fitting the linear model to the zero-inflated data. A small number of categories (<10), which leads to an increased loss of information for the proportional odds model visibly hurts the models performance. Otherwise, zero-inflation creates a level playing field for both models.
 
@@ -311,7 +311,7 @@ p4.2.2 <- q_4(x = "linmod.pval.zero.inflated", y = "logit.pval")
 p4.2.2
 ```
 
-#### Spearman's correlation and proportional odds model
+### Spearman's correlation and proportional odds model
 
 It is to be expected that Spearman's correlation of the full data set outperforms the zero-inflated proportional odds approach. Setting both approaches to the zero-inflated data against each other again only reveals an advantage of Spearman's correlation coefficient over a proportional odds model with very few (<10) categories. Otherwise the models perform equally.
 
@@ -357,7 +357,7 @@ lapply(unique(all.scenarios$proz0), function(y){
 })
 ```
 
-### Comparison of effect sizes between linear model and proportional odds model
+## Comparison of effect sizes between linear model and proportional odds model
 
 Plotting the average effect sizes from the linear model and the prop-odds model reveal a drastic overestimation of effect size with increasing effect size in the data by the prop-odds model. Additionally, the zero-inflation seems to be influencig seems to be adding to to this overestimation while leading to an underestimation of the added effect in the linear model.
 

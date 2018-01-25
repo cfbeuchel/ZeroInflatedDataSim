@@ -132,11 +132,21 @@ res <- mclapply(szenarien$num,  function(x) {
   df <- data.table(x = rnorm(n))
   df[, y := x * effekt + rnorm(n) * (1 - effekt) + 2]
   
+  # create uncorrelated data to test for false positives
+  df.control <- data.table::data.table(a = rnorm(n),
+                                       b = rnorm(n))
+  
   # fit lm
   linmod.full.data <- df[, summary(lm(y ~ x))]
   
+  # fit uncorrelated model
+  linmod.control <- df.control[, summary(lm(a ~ b))]
+  
   # add spearman rank correlation to compare with Theis
   cor.full.data <- tidy(df[, cor.test(x = x, y = y, method = "spearman")])
+  
+  # correlate control data
+  cor.control <- tidy(df.control[, cor.test(x = a, y = b, method = "spearman")])
   
   # add summary statistics
   res <- data.table(num = num,
@@ -150,13 +160,24 @@ res <- mclapply(szenarien$num,  function(x) {
                     spearman.cor.pval.full.data = cor.full.data$p.value,
                     linmod.r2.full.data = linmod.full.data$r.squared,
                     linmod.pval.full.data = linmod.full.data$coefficients["x","Pr(>|t|)"],
-                    linmod.beta.full.data = linmod.full.data$coefficients["x","Estimate"])
+                    linmod.beta.full.data = linmod.full.data$coefficients["x","Estimate"],
+                    spearman.cor.control = cor.control$estimate,
+                    spearman.cor.control = cor.control$p.value,
+                    linmod.r2.control = linmod.control$r.squared,
+                    linmod.pval.control = linmod.control$coefficients["b","Pr(>|t|)"],
+                    linmod.beta.control = linmod.control$coefficients["b","Estimate"])
   
   # create zero-inflated y-derived data
   df[, y.0infl := y]
   df[y < quantile(y.0infl, probs = proz0/100), y.0infl := 0]
   min.found = df[y.0infl > 0, min(y.0infl)]
   df[y.0infl > 0, y.0infl := y.0infl - 0.99*min.found]
+  
+  # zero-inflate the control
+  df.control[, a.0infl := a]
+  df.control[a < quantile(a.0infl, probs = proz0/100), a.0infl := 0]
+  min.found = df.control[a.0infl > 0, min(a.0infl)]
+  df.control[a.0infl > 0, a.0infl := a.0infl - 0.99*min.found]
   
   # check
   # df[,.N,y.0infl==0]
@@ -166,15 +187,26 @@ res <- mclapply(szenarien$num,  function(x) {
   # fit lm
   linmod.zero.inflated <- df[, summary(lm(y.0infl ~ x))]
   
+  # control
+  linmod.control.zero.inflated <- df.control[, summary(lm(a.0infl ~ b))]
+  
   # add spearman rank correlation to compare with Theis
   cor.zero.inflated <- tidy(df[, cor.test(x = x, y = y.0infl, method = "spearman")])
+  
+  # corr control
+  cor.control.zero.inflated <- tidy(df.control[, cor.test(x = b, y = a.0infl, method = "spearman")])
   
   # enter results
   res[, `:=`(spearman.cor.zero.inflated = cor.zero.inflated$estimate,
              spearman.cor.pval.zero.inflated = cor.zero.inflated$p.value,
              linmod.r2.zero.inflated = linmod.zero.inflated$r.squared,
              linmod.pval.zero.inflated = linmod.zero.inflated$coefficients["x","Pr(>|t|)"],
-             linmod.beta.zero.inflated = linmod.zero.inflated$coefficients["x","Estimate"])]
+             linmod.beta.zero.inflated = linmod.zero.inflated$coefficients["x","Estimate"],
+             spearman.cor.control.zero.inflated = cor.control.zero.inflated$estimate,
+             spearman.cor.control.pval.zero.inflated = cor.control.zero.inflated$p.value,
+             linmod.control.r2.zero.inflated = linmod.control.zero.inflated$r.squared,
+             linmod.control.pval.zero.inflated = linmod.control.zero.inflated$coefficients["b","Pr(>|t|)"],
+             linmod.control.beta.zero.inflated = linmod.control.zero.inflated$coefficients["b","Estimate"])]
   
   # sort by y (category)
   setorder(df, y)

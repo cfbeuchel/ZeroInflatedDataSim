@@ -9,8 +9,6 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 ---
 
 ```{r knitr, cache = F, results = "markup", echo = T, warning = T}
-# start with a clean workspace
-rm(list=ls())
 gc()
 
 # Set the global knitr options
@@ -26,37 +24,15 @@ This script is a small data simulation to help figure out an appropriate data tr
 
 ```{r initiate, cache = F, results = "hide", echo = F}
 # choose correct working directory
-r_on_server <- T
+r_on_server <- F
+
+# number of cores used in parallel processing
 if (r_on_server == T) {
-  basicpath <- "/net/ifs1/san_projekte/projekte/"
-} else {
-  basicpath <- "/mnt/ifs1_projekte/"
+  .libPaths("/net/ifs1/san_projekte/projekte/genstat/07_programme/rpackages/forostar/")
+  number.of.cores <- 10
+} else if (r_on_server == F) {
+  number.of.cores <- parallel::detectCores()/2
 }
-setwd(basicpath)
-
-# set working directory
-pathwd <-
-  paste0(
-    basicpath,
-    "genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/171124_ZeroInflatedDataSim"
-  )
-setwd(pathwd)
-
-# get additional functions from Holger Kirstens newest RProfile file
-newest_rprofile <-
-  function(designation = paste0(basicpath, "genstat/07_programme/rtools/RProfile_hk/")) {
-    files <- list.files(designation)
-    RProfiles <- files[grep("Rprofile_hk_", files)]
-    newest_RProfile <- tail(sort(RProfiles), n = 1)
-    suppressPackageStartupMessages(source(paste0(designation, newest_RProfile)))
-  }
-newest_rprofile()
-
-# start time measurement, define alternative package directory, define start codes for external start of the script
-if (r_on_server == T) {
-  initializeSkript(myfilename = filename, computer = "forostar") # enter which server you are on
-} else
-  initializeSkript(myfilename = filename, computer = "local")
 
 # Packages
 for (i in c(
@@ -66,7 +42,10 @@ for (i in c(
   "ordinal",
   "MASS",
   "parallel",
-  "CarlHelpR"
+  "CarlHelpR",
+  "toolboxH",
+  "here",
+  "sva"
 )) {
   suppressPackageStartupMessages(library(i, character.only = TRUE))
 }
@@ -74,7 +53,7 @@ for (i in c(
 
 ## Data simulation and setup
 
-```{r setup}
+```{r param.setup}
 # code by HKirsten (holgerman)
 # set parameters for simulation, e.g. effect size, n...
 set.seed(0815)
@@ -83,7 +62,7 @@ set.seed(0815)
 effekte = c(0.01, 0.02, 0.05, 0.1, 0.3)
 
 # size of simulated data set
-n = 5000
+n = 3000
 
 # magnitude of zero-inflation in %
 proz0 = c(20, 50, 80)
@@ -96,6 +75,9 @@ categart = c("quantile", "bereiche")
 
 # number of categories
 categnum = c(2:10, 20, 30, 40, 50)
+
+# add a batch to test the effect of ComBat on badly distributed data
+batch <- c(0, 0.05, 0.1)
 ```
 
 ## Create scenarios
@@ -115,27 +97,35 @@ szenarien[,num := 1:.N]
 
 ```{r test.data}
 # apply over each szenario
-res <- mclapply(szenarien$num,  function(x) {
+res <- mclapply(szenarien$num,  function(i) {
   
-  x <- szenarien[num == x]
+  # i <- 268 # debug
+  my.x <- szenarien[num == i]
   
-  # x <- szenarien[268, ] # debug
-  effekt <- x$effekte
-  n <- x$n
-  proz0 <- x$proz0
-  categart <- x$categart
-  categnum <- x$categnum
-  num <- x$num 
-  real <-  x$realization
+  # reassign the effects for readability
+  effekt <- my.x$effekte
+  n <- my.x$n
+  proz0 <- my.x$proz0
+  categart <- my.x$categart
+  categnum <- my.x$categnum
+  num <- my.x$num 
+  batch <- my.x$batch
+  real <-  my.x$realization
   
   # create data for scenario
   df <- data.table(x = rnorm(n))
-  df[, y := x * effekt + rnorm(n) * (1 - effekt) + 2]
+  df[, y :=  (effekt * x) + ((1 - effekt) * rnorm(n)) + 3]
   
   # create uncorrelated data to test for false positives
   df.control <- data.table::data.table(a = rnorm(n),
                                        b = rnorm(n))
   
+  # add batch effects do df & control
+  df[, batch := rep_len(letters[1:length(batch)], length.out = n)]
+  for(my.batch in letters[1:length(batch)]) {
+    df[y == (my.batch), y := y + (batch[which(letters == my.batch)] * rnorm(n))]
+    df.control[a == (my.batch), a := a + (batch[which(letters == my.batch)] * rnorm(n))]
+  }
   # fit lm
   linmod.full.data <- df[, summary(lm(y ~ x))]
   
@@ -167,21 +157,39 @@ res <- mclapply(szenarien$num,  function(x) {
                     linmod.pval.control = linmod.control$coefficients["b","Pr(>|t|)"],
                     linmod.beta.control = linmod.control$coefficients["b","Estimate"])
   
+  #-----------------------------------------------------------------
   # create zero-inflated y-derived data
+  # way one:
   df[, y.0infl := y]
   df[y < quantile(y.0infl, probs = proz0/100), y.0infl := 0]
   min.found = df[y.0infl > 0, min(y.0infl)]
   df[y.0infl > 0, y.0infl := y.0infl - 0.99*min.found]
   
+  # alternatively, sample (at n = proz.0) from the distribution and set those sampled values == 0
+  df[, y.0ifl.2 := y]
+  df[sample(x = 1:n, size = n * proz0/100, replace = F), y.0ifl.2 := 0]
+  #-----------------------------------------------------------------
+  
+  #-----------------------------------------------------------------
   # zero-inflate the control
   df.control[, a.0infl := a]
   df.control[a < quantile(a.0infl, probs = proz0/100), a.0infl := 0]
   min.found = df.control[a.0infl > 0, min(a.0infl)]
   df.control[a.0infl > 0, a.0infl := a.0infl - 0.99*min.found]
   
+  df.control[, a.0infl.2 := a]
+  df[sample(x = 1:n, size = n * proz0/100, replace = F), a.0infl.2 := 0]
+  #-----------------------------------------------------------------
+  
   # check
   # df[,.N,y.0infl==0]
   # hist(df$y.0infl, breaks = 50)
+  
+  #-----------------------------------------------------------------
+  # do ComBat batch adjustment
+  
+  
+  #-----------------------------------------------------------------
   
   # add lm and spearman-cor for zero-inflated data
   # fit lm
@@ -255,7 +263,7 @@ res <- mclapply(szenarien$num,  function(x) {
              logit.AIC = as.numeric(logit.mod.2$info$AIC))]
   
   return(res)
-}, mc.cores = 10, mc.cleanup = T)
+}, mc.cores = number.of.cores, mc.cleanup = T)
 
 # bind everything together
 all.scenarios <- rbindlist(res)

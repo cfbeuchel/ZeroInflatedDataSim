@@ -113,7 +113,7 @@ options(nwarnings = 50000)
 # apply over each szenario
 #=================================================================================#
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)[1:10]),  function(x) { # OUTER LOOP
+all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)),  function(x) { # OUTER LOOP
   
   # create sub-scenario
   # x <- 43 # debug

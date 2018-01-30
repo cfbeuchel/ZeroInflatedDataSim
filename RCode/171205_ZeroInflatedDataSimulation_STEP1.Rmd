@@ -29,7 +29,7 @@ r_on_server <- T
 # number of cores used in parallel processing
 if (r_on_server == T) {
   .libPaths("/net/ifs1/san_projekte/projekte/genstat/07_programme/rpackages/forostar/")
-  number.of.cores <- 10
+  number.of.cores <- 1
 } else if (r_on_server == F) {
   number.of.cores <- parallel::detectCores()/2
 }
@@ -113,10 +113,10 @@ options(nwarnings = 50000)
 # apply over each szenario
 #=================================================================================#
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-res <- mclapply(1:length(unique(szenarien$combat.run)[1:4]),  function(x) { # OUTER LOOP
+all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)[1:10]),  function(x) { # OUTER LOOP
   
   # create sub-scenario
-  # x <- 7 # debug
+  # x <- 43 # debug
   my.combat.run <- szenarien[combat.run == x, ]
   my.combat.run[, sub.run := 1:.N]
   
@@ -124,14 +124,14 @@ res <- mclapply(1:length(unique(szenarien$combat.run)[1:4]),  function(x) { # OU
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   combat.data.raw <- lapply(my.combat.run$sub.run, function(i){ # INNER LOOP
     
-    # i <- 20 # debug
+    # i <- 85 # debug
     my.x <- my.combat.run[sub.run == i]
     
     # reassign the effects for readability
     my.effekt <- my.x$effekte
     my.n <- my.x$n
     my.proz0 <- my.x$proz0
-    my.categart <- my.x$categart
+    my.categart <- as.character(my.x$categart)
     my.categnum <- my.x$categnum
     my.num <- my.x$num
     my.batch.effekt <- my.x$batch
@@ -379,10 +379,6 @@ res <- mclapply(1:length(unique(szenarien$combat.run)[1:4]),  function(x) { # OU
   #-----------------------------------------------------------------
   # Fit Models on categorical data
   #-----------------------------------------------------------------
-  
-  #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
-  ### BAUSTELLE ######################
-  #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
   lm.categ.res.raw <- lapply(my.combat.run$sub.run, function(x){
     
     # formulas for model definition
@@ -422,16 +418,13 @@ res <- mclapply(1:length(unique(szenarien$combat.run)[1:4]),  function(x) { # OU
   lm.categ.res <- rbindlist(lm.categ.res.raw)
   
   lm.cor.res[ , names(lm.categ.res) := lm.categ.res]
-    #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
-    #==================================#
-    #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
-
+    
 }, mc.cores = number.of.cores, mc.cleanup = T) # END OUTER LOOP
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 #=============================================================#
 
 # bind everything together
-all.scenarios <- rbindlist(res)
+all.scenarios <- rbindlist(all.combat.runs.raw)
 
 warnings()
 ```

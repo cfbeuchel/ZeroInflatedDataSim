@@ -113,10 +113,11 @@ options(nwarnings = 50000)
 # apply over each szenario
 #=================================================================================#
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)),  function(x) { # OUTER LOOP
+all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x) { # OUTER LOOP
   
   # create sub-scenario
-  # x <- 43 # debug
+  # x <- 1 # debug
+  message(paste("\nStarting run:", x, "#==============================================#\n"))
   my.combat.run <- szenarien[combat.run == x, ]
   my.combat.run[, sub.run := 1:.N]
   
@@ -266,12 +267,12 @@ all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)),  functio
   
   # now compute everything for 96 data sets
   # loop -------------------------------------------------
-  lm.cor.res <- lapply(my.combat.run$sub.run, function(x){
+  lm.cor.res <- lapply(my.combat.run$sub.run, function(f){
     
     # formulas
-    my.formula.full <- as.formula(paste0("y.", x, " ~ ", "x.", x))
-    my.formula.0infl <- as.formula(paste0("y.0infl.", x, " ~ ", "x.", x))
-    my.formula.0infl.transformed <- as.formula(paste0("y.0infl.", x, ".transformed ", " ~ ", "x.", x))
+    my.formula.full <- as.formula(paste0("y.", f, " ~ ", "x.", f))
+    my.formula.0infl <- as.formula(paste0("y.0infl.", f, " ~ ", "x.", f))
+    my.formula.0infl.transformed <- as.formula(paste0("y.0infl.", f, ".transformed ", " ~ ", "x.", f))
     
     # calc the lm
     linmod.full.data <- summary(lm(my.formula.full, data = combat.data)) 
@@ -279,9 +280,9 @@ all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)),  functio
     linmod.zero.inflated.transformed <- summary(lm(my.formula.0infl.transformed, data = combat.data)) 
     
     # do the rank correlation
-    cor.full.data <- tidy(combat.data[, cor.test(x = get(paste0("x.",x)), y = get(paste0("y.",x)), method = "spearman")])
-    cor.zero.inflated <- tidy(combat.data[, cor.test(x = get(paste0("x.",x)), y = get(paste0("y.0infl.",x)), method = "spearman")])
-    cor.zero.inflated.transformed <- tidy(combat.data[, cor.test(x = get(paste0("x.",x)), y = get(paste0("y.0infl.",x, ".transformed")), method = "spearman")])
+    cor.full.data <- tidy(combat.data[, cor.test(x = get(paste0("x.", f)), y = get(paste0("y.", f)), method = "spearman")])
+    cor.zero.inflated <- tidy(combat.data[, cor.test(x = get(paste0("x.", f)), y = get(paste0("y.0infl.", f)), method = "spearman")])
+    cor.zero.inflated.transformed <- tidy(combat.data[, cor.test(x = get(paste0("x.", f)), y = get(paste0("y.0infl.", f, ".transformed")), method = "spearman")])
     
     # compile results
     res <- data.table(spearman.cor.full.data = cor.full.data$estimate,
@@ -322,6 +323,8 @@ all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)),  functio
   #-----------------------------------------------------------------
   # Form Categories over zero-inflated data
   #-----------------------------------------------------------------
+  my.categart <- as.character(unique(my.combat.run$categart))
+  my.categnum <- (unique(my.combat.run$categnum))
   
   #get the cols to categorise
   cols.to.categorise <- grep("y.0infl.[0-9]{1,2}$", names(combat.data), value = T)
@@ -329,10 +332,10 @@ all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)),  functio
   if(my.categart == "quantile") {
     
     # loop through each col and create ordered factor based on quantile
-    categorised.cols <- combat.data[ , lapply(.SD, function(i){
+    categorised.cols <- combat.data[ , lapply(.SD, function(g){
       
       # i <- combat.data$y.0infl.45 # debug
-      dummy <- data.table(data.no.categ = i)
+      dummy <- data.table(data.no.categ = g)
       dummy[data.no.categ > 0, data.categ :=  cut(data.no.categ,
                                                   breaks = unique(quantile(data.no.categ,
                                                                            probs = seq(0, 1, 1 / my.categnum))),
@@ -349,10 +352,10 @@ all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)),  functio
   } else if(my.categart == "bereiche"){
     
     # loop through each col and create ordered factor based on range
-    categorised.cols <- combat.data[ , lapply(.SD, function(i){
+    categorised.cols <- combat.data[ , lapply(.SD, function(h){
       
       # i <- combat.data$y.0infl.45 # debug
-      dummy <- data.table(data.no.categ = i)
+      dummy <- data.table(data.no.categ = h)
       dummy[data.no.categ > 0, data.categ :=  cut(data.no.categ,
                                                   breaks = seq(0, max(data.no.categ),
                                                                length.out = my.categnum + 1),
@@ -379,13 +382,13 @@ all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)),  functio
   #-----------------------------------------------------------------
   # Fit Models on categorical data
   #-----------------------------------------------------------------
-  lm.categ.res.raw <- lapply(my.combat.run$sub.run, function(x){
+  lm.categ.res.raw <- lapply(my.combat.run$sub.run, function(j){
     
     # formulas for model definition
-    dicho.val.name <- paste0("y.0infl.", x)
-    categ.val.name <- paste0("y.0infl.", x, ".categorical")
-    my.formula.linmod.dicho <- as.formula(paste0(dicho.val.name, "> 0 ~ ", "x.", x))
-    my.formula.linmod.logit <- as.formula(paste0(categ.val.name," ~ ", "x.", x))
+    dicho.val.name <- paste0("y.0infl.", j)
+    categ.val.name <- paste0("y.0infl.", j, ".categorical")
+    my.formula.linmod.dicho <- as.formula(paste0(dicho.val.name, "> 0 ~ ", "x.", j))
+    my.formula.linmod.logit <- as.formula(paste0(categ.val.name," ~ ", "x.", j))
     
     # run the model
     linmod.dicho <- summary(glm(formula = my.formula.linmod.dicho, family = "binomial", data = combat.data))
@@ -418,18 +421,22 @@ all.combat.runs.raw <- mclapply(1:length(unique(szenarien$combat.run)),  functio
   lm.categ.res <- rbindlist(lm.categ.res.raw)
   
   lm.cor.res[ , names(lm.categ.res) := lm.categ.res]
+  
+  # return
+  return(lm.cor.res)
     
 }, mc.cores = number.of.cores, mc.cleanup = T) # END OUTER LOOP
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 #=============================================================#
 
-# bind everything together
-all.scenarios <- rbindlist(all.combat.runs.raw)
-
+# return warnings
 warnings()
 ```
 
 ```{r save}
+# bind everything together
+all.scenarios <- rbindlist(all.combat.runs.raw)
+
 # Save for use in STEP2
 save_csv_carl(file = all.scenarios,
               file_name = "SimulationResultsForSTEP2",

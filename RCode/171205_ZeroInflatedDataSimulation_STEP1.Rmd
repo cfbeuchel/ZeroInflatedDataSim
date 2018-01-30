@@ -1,9 +1,9 @@
 ---
 output:
-  html_document:
-    toc: true
-    number_sections: false
-    toc_depth: 3
+html_document:
+toc: true
+number_sections: false
+toc_depth: 3
 author: "Carl Beuchel"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 ---
@@ -24,7 +24,7 @@ This script is a small data simulation to help figure out an appropriate data tr
 
 ```{r initiate, cache = F, results = "hide", echo = F}
 # choose correct working directory
-r_on_server <- F
+r_on_server <- T
 
 # number of cores used in parallel processing
 if (r_on_server == T) {
@@ -40,15 +40,16 @@ for (i in c(
   "data.table",
   "broom",
   "ordinal",
-  "MASS",
+  # "MASS",
   "parallel",
   "CarlHelpR",
   "toolboxH",
   "here",
-  "sva"
+  "bestNormalize"
 )) {
   suppressPackageStartupMessages(library(i, character.only = TRUE))
 }
+
 ```
 
 ## Data simulation and setup
@@ -59,215 +60,380 @@ for (i in c(
 set.seed(0815)
 
 # magnitude of simulated effect  
-effekte = c(0.01, 0.02, 0.05, 0.1, 0.3)
+effekte.input = c(0, 0.01, 0.02, 0.05, 0.1, 0.3)
 
 # size of simulated data set
-n = 3000
+n.input = 3000
 
 # magnitude of zero-inflation in %
-proz0 = c(20, 50, 80)
+proz0.input = c(0, 20, 50, 80)
 
 # how often should each step be repeated?
-realisierungen = 1000
+realisierungen.input = 1000
 
 # type of categories
-categart = c("quantile", "bereiche")
+categart.input = c("quantile", "bereiche")
 
 # number of categories
-categnum = c(2:10, 20, 30, 40, 50)
+categnum.input = c(5, 10, 20, 30, 40, 50)
 
 # add a batch to test the effect of ComBat on badly distributed data
-batch <- c(0, 0.05, 0.1)
+batch.effekt.input <- c(0, 1)
+
+batch.nr.input <- 10
 ```
 
 ## Create scenarios
 
 ```{r create.scenarios}
 # create dt with all scenario combinations
-szenarien <- data.table(expand.grid(effekte = effekte,
-                                    n = n,
-                                    proz0 = proz0,
-                                    categart = categart,
-                                    categnum = categnum,
-                                    realization = 1:realisierungen))
+szenarien <- data.table(expand.grid(effekte = effekte.input,
+                                    n = n.input,
+                                    proz0 = proz0.input,
+                                    categart = categart.input,
+                                    categnum = categnum.input,
+                                    batch = batch.effekt.input,
+                                    realization = 1:realisierungen.input))
 szenarien[,num := 1:.N]
+
+# combat ID bauen
+# szenarien (alle effekte, proz0 und 4 realisierungen pro combat run)
+setorder(szenarien, effekte, n, proz0, categart, categnum, batch, realization)
+szenarien[, realisation.groups := sort(rep(1:(realisierungen.input /  4), 4))]
+szenarien[, combat.run := paste(n, categart, categnum, batch, realisation.groups)]
+szenarien[, combat.run := as.numeric(factor(combat.run))]
+szenarien[, .N, combat.run][, .N, N]
 ```
 
 ## Create data and run lm
 
-```{r test.data}
+```{r test.data, warning=T}
+options(nwarnings = 50000)
+
 # apply over each szenario
-res <- mclapply(szenarien$num,  function(i) {
+#=================================================================================#
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+res <- mclapply(1:length(unique(szenarien$combat.run)[1:4]),  function(x) { # OUTER LOOP
   
-  # i <- 268 # debug
-  my.x <- szenarien[num == i]
+  # create sub-scenario
+  # x <- 7 # debug
+  my.combat.run <- szenarien[combat.run == x, ]
+  my.combat.run[, sub.run := 1:.N]
   
-  # reassign the effects for readability
-  effekt <- my.x$effekte
-  n <- my.x$n
-  proz0 <- my.x$proz0
-  categart <- my.x$categart
-  categnum <- my.x$categnum
-  num <- my.x$num 
-  batch <- my.x$batch
-  real <-  my.x$realization
+  # subloop for each combat run
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  combat.data.raw <- lapply(my.combat.run$sub.run, function(i){ # INNER LOOP
+    
+    # i <- 20 # debug
+    my.x <- my.combat.run[sub.run == i]
+    
+    # reassign the effects for readability
+    my.effekt <- my.x$effekte
+    my.n <- my.x$n
+    my.proz0 <- my.x$proz0
+    my.categart <- my.x$categart
+    my.categnum <- my.x$categnum
+    my.num <- my.x$num
+    my.batch.effekt <- my.x$batch
+    my.real <-  my.x$realization
+    
+    # create data for scenario
+    df <- data.table(x = rnorm(my.n, 3, 1))
+    df[, y :=  (my.effekt * x) + ((1 - my.effekt) * rnorm(my.n, 3, 1))]
+    
+    # add batch effects do df
+    df[, batch := rep_len(letters[1:batch.nr.input], length.out = my.n)]
+    df[, batch.factor := as.numeric(factor(batch))]
+    df[ , y := y + my.batch.effekt/batch.factor]
+    
+    #-----------------------------------------------------------------
+    # create zero-inflated y-derived data
+    #-----------------------------------------------------------------
+    
+    # way one:
+    df[, y.0infl := y]
+    df[y < quantile(y.0infl, probs = my.proz0/100), y.0infl := 0]
+    min.found = df[y.0infl > 0, min(y.0infl)]
+    df[y.0infl > 0, y.0infl := y.0infl - 0.99*min.found]
+    
+    # check
+    # df[,.N,y.0infl==0]
+    # hist(df$y.0infl, breaks = 50)
+    
+    # keep only the first batch-name
+    if(i == 1) {
+      
+      # build dt with dat
+      combat.subgroup <- data.table(x = df$x,
+                                    y = df$y,
+                                    y.0infl = df$y.0infl,
+                                    batch = df$batch)
+      
+      # name
+      new.names <- c(paste0("x.", i), paste0("y.",i), paste0("y.0infl.", i), "batch")
+      
+      # only get the data for the other iterations
+    } else if(i != 1) {
+      
+      # build dt with dat
+      combat.subgroup <- data.table(x = df$x,
+                                    y = df$y,
+                                    y.0infl = df$y.0infl)
+      
+      # name
+      new.names <- c(paste0("x.", i), paste0("y.",i), paste0("y.0infl.", i))
+    }
+    
+    # set names
+    setnames(combat.subgroup, new.names)
+    
+    # output
+    return(combat.subgroup)
+  }) # END INNER LOOP
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   
-  # create data for scenario
-  df <- data.table(x = rnorm(n))
-  df[, y :=  (effekt * x) + ((1 - effekt) * rnorm(n)) + 3]
-  
-  # create uncorrelated data to test for false positives
-  df.control <- data.table::data.table(a = rnorm(n),
-                                       b = rnorm(n))
-  
-  # add batch effects do df & control
-  df[, batch := rep_len(letters[1:length(batch)], length.out = n)]
-  for(my.batch in letters[1:length(batch)]) {
-    df[y == (my.batch), y := y + (batch[which(letters == my.batch)] * rnorm(n))]
-    df.control[a == (my.batch), a := a + (batch[which(letters == my.batch)] * rnorm(n))]
-  }
-  # fit lm
-  linmod.full.data <- df[, summary(lm(y ~ x))]
-  
-  # fit uncorrelated model
-  linmod.control <- df.control[, summary(lm(a ~ b))]
-  
-  # add spearman rank correlation to compare with Theis
-  cor.full.data <- tidy(df[, cor.test(x = x, y = y, method = "spearman")])
-  
-  # correlate control data
-  cor.control <- tidy(df.control[, cor.test(x = a, y = b, method = "spearman")])
-  
-  # add summary statistics
-  res <- data.table(num = num,
-                    realization = real,
-                    effekt = effekt,
-                    n = n,
-                    proz0 = proz0,
-                    categart = categart,
-                    categnum = categnum,
-                    spearman.cor.full.data = cor.full.data$estimate,
-                    spearman.cor.pval.full.data = cor.full.data$p.value,
-                    linmod.r2.full.data = linmod.full.data$r.squared,
-                    linmod.pval.full.data = linmod.full.data$coefficients["x","Pr(>|t|)"],
-                    linmod.beta.full.data = linmod.full.data$coefficients["x","Estimate"],
-                    spearman.cor.control = cor.control$estimate,
-                    spearman.cor.control = cor.control$p.value,
-                    linmod.r2.control = linmod.control$r.squared,
-                    linmod.pval.control = linmod.control$coefficients["b","Pr(>|t|)"],
-                    linmod.beta.control = linmod.control$coefficients["b","Estimate"])
-  
-  #-----------------------------------------------------------------
-  # create zero-inflated y-derived data
-  # way one:
-  df[, y.0infl := y]
-  df[y < quantile(y.0infl, probs = proz0/100), y.0infl := 0]
-  min.found = df[y.0infl > 0, min(y.0infl)]
-  df[y.0infl > 0, y.0infl := y.0infl - 0.99*min.found]
-  
-  # alternatively, sample (at n = proz.0) from the distribution and set those sampled values == 0
-  df[, y.0ifl.2 := y]
-  df[sample(x = 1:n, size = n * proz0/100, replace = F), y.0ifl.2 := 0]
-  #-----------------------------------------------------------------
-  
-  #-----------------------------------------------------------------
-  # zero-inflate the control
-  df.control[, a.0infl := a]
-  df.control[a < quantile(a.0infl, probs = proz0/100), a.0infl := 0]
-  min.found = df.control[a.0infl > 0, min(a.0infl)]
-  df.control[a.0infl > 0, a.0infl := a.0infl - 0.99*min.found]
-  
-  df.control[, a.0infl.2 := a]
-  df[sample(x = 1:n, size = n * proz0/100, replace = F), a.0infl.2 := 0]
-  #-----------------------------------------------------------------
-  
-  # check
-  # df[,.N,y.0infl==0]
-  # hist(df$y.0infl, breaks = 50)
+  # bind togeter
+  invisible(combat.data <- do.call(cbind, combat.data.raw))
   
   #-----------------------------------------------------------------
   # do ComBat batch adjustment
-  
-  
   #-----------------------------------------------------------------
   
-  # add lm and spearman-cor for zero-inflated data
-  # fit lm
-  linmod.zero.inflated <- df[, summary(lm(y.0infl ~ x))]
+  # get cols 
+  zero.infl.cols <- names(combat.data)[grep("y.0infl", names(combat.data))]
+  y.cols <- names(combat.data)[grep("^y.", names(combat.data))]
   
-  # control
-  linmod.control.zero.inflated <- df.control[, summary(lm(a.0infl ~ b))]
+  # designate transposed matrix for adjustment
+  my.edata.y.zero.infl <- combat.data[, t(as.matrix(.SD)), .SDcols = zero.infl.cols]
+  my.edata.y <- combat.data[, t(as.matrix(.SD)), .SDcols = y.cols]
   
-  # add spearman rank correlation to compare with Theis
-  cor.zero.inflated <- tidy(df[, cor.test(x = x, y = y.0infl, method = "spearman")])
+  # set batch as character string
+  my.batch <- combat.data[, unname(unlist(batch))]
   
-  # corr control
-  cor.control.zero.inflated <- tidy(df.control[, cor.test(x = b, y = a.0infl, method = "spearman")])
+  # set phenotypes to adjust
+  my.pheno <- combat.data[, .(batch)]
   
-  # enter results
-  res[, `:=`(spearman.cor.zero.inflated = cor.zero.inflated$estimate,
-             spearman.cor.pval.zero.inflated = cor.zero.inflated$p.value,
-             linmod.r2.zero.inflated = linmod.zero.inflated$r.squared,
-             linmod.pval.zero.inflated = linmod.zero.inflated$coefficients["x","Pr(>|t|)"],
-             linmod.beta.zero.inflated = linmod.zero.inflated$coefficients["x","Estimate"],
-             spearman.cor.control.zero.inflated = cor.control.zero.inflated$estimate,
-             spearman.cor.control.pval.zero.inflated = cor.control.zero.inflated$p.value,
-             linmod.control.r2.zero.inflated = linmod.control.zero.inflated$r.squared,
-             linmod.control.pval.zero.inflated = linmod.control.zero.inflated$coefficients["b","Pr(>|t|)"],
-             linmod.control.beta.zero.inflated = linmod.control.zero.inflated$coefficients["b","Estimate"])]
+  # only intercept term, no covariates
+  my.formula <- ~1
   
-  # sort by y (category)
-  setorder(df, y)
+  # create model matrix
+  my.modcombat <- model.matrix(my.formula, data = my.pheno)
   
-  # create categories to calculate polr/ordinal over
-  if(categart == "quantile") {
+  # combat on zero-inflated data
+  combat.edata.zero.infl <- sva::ComBat(dat = my.edata.y.zero.infl, batch = my.batch, mod = my.modcombat, par.prior = F, prior.plots = T)
+  
+  # reset pars
+  par(mfrow=c(1,1))
+  
+  # combat on normal data
+  combat.edata.y <- sva::ComBat(dat = my.edata.y, batch = my.batch, mod = my.modcombat, par.prior = F, prior.plots = T)
+  
+  # reset pars
+  par(mfrow=c(1,1))
+  
+  # re-enter adjusted data into dat
+  combat.data[, (zero.infl.cols) := as.data.table(t(combat.edata.zero.infl))]
+  combat.data[, (y.cols) := as.data.table(t(combat.edata.y))]
+  
+  #-----------------------------------------------------------------
+  # Inverse-normal transformation
+  #-----------------------------------------------------------------
+  
+  # what do I want to transform also only choose cols that have at least 20% zero inflation
+  cols.to.transform <- names(combat.data)[grep("y.0infl.[0-9]{1,2}$", names(combat.data))] #[my.combat.run$proz0 != 0]
+  
+  # Loop -------------------------------
+  transformed.cols <- combat.data[, lapply(.SD, function(x){
     
-    # categorisation over quantiles
-    df[y.0infl > 0, y.0infl.categ := cut(y.0infl, breaks = quantile(y.0infl, probs = seq(0, 1, 1/categnum)), include.lowest = T)]
-    categs.created <- df[, levels(y.0infl.categ)]
-    df[y.0infl == 0, y.0infl.categ := factor(0, labels =  "[0]")]
-    df[, y.0infl.categ := factor(y.0infl.categ, levels = c("[0]", categs.created))]
-  } else if(categart == "bereiche"){
+    # x <- combat.data$y.0infl_6  # debug
+    one.transformed.col <- orderNorm(x)$x.t
     
-    # category separating over range
-    df[y.0infl > 0, y.0infl.categ := cut(y.0infl, breaks = seq(0, max(y.0infl), length.out = categnum + 1), include.lowest = T)]
-    categs.created <- df[, levels(y.0infl.categ)]
-    df[y.0infl == 0, y.0infl.categ := factor(0, labels =  "[0]")]
-    df[, y.0infl.categ := factor(y.0infl.categ, levels = c("[0]", categs.created))]
+    # return to "transformed.cols"-output
+    return(one.transformed.col)
+    
+    # end of lapply-loop
+  }), .SDcols = cols.to.transform]
+  # End: Loop --------------------------
+  
+  # set transformed cols into combat.data
+  names(transformed.cols) <- paste0(names(transformed.cols), ".transformed")
+  
+  combat.data[ , names(transformed.cols) := transformed.cols]
+  
+  #-----------------------------------------------------------------
+  # fit lm on each ComBat chunk (96)
+  #-----------------------------------------------------------------
+  
+  # now compute everything for 96 data sets
+  # loop -------------------------------------------------
+  lm.cor.res <- lapply(my.combat.run$sub.run, function(x){
+    
+    # formulas
+    my.formula.full <- as.formula(paste0("y.", x, " ~ ", "x.", x))
+    my.formula.0infl <- as.formula(paste0("y.0infl.", x, " ~ ", "x.", x))
+    my.formula.0infl.transformed <- as.formula(paste0("y.0infl.", x, ".transformed ", " ~ ", "x.", x))
+    
+    # calc the lm
+    linmod.full.data <- summary(lm(my.formula.full, data = combat.data)) 
+    linmod.zero.inflated <- summary(lm(my.formula.0infl, data = combat.data)) 
+    linmod.zero.inflated.transformed <- summary(lm(my.formula.0infl.transformed, data = combat.data)) 
+    
+    # do the rank correlation
+    cor.full.data <- tidy(combat.data[, cor.test(x = get(paste0("x.",x)), y = get(paste0("y.",x)), method = "spearman")])
+    cor.zero.inflated <- tidy(combat.data[, cor.test(x = get(paste0("x.",x)), y = get(paste0("y.0infl.",x)), method = "spearman")])
+    cor.zero.inflated.transformed <- tidy(combat.data[, cor.test(x = get(paste0("x.",x)), y = get(paste0("y.0infl.",x, ".transformed")), method = "spearman")])
+    
+    # compile results
+    res <- data.table(spearman.cor.full.data = cor.full.data$estimate,
+                      spearman.cor.pval.full.data = cor.full.data$p.value,
+                      linmod.r2.full.data = linmod.full.data$r.squared,
+                      linmod.pval.full.data = linmod.full.data$coefficients[grep("x.", rownames(linmod.full.data$coefficients)), "Pr(>|t|)"],
+                      linmod.beta.full.data = linmod.full.data$coefficients[grep("x.", rownames(linmod.full.data$coefficients)),"Estimate"],
+                      spearman.cor.zero.inflated = cor.zero.inflated$estimate,
+                      spearman.cor.pval.zero.inflated = cor.zero.inflated$p.value,
+                      linmod.r2.zero.inflated = linmod.zero.inflated$r.squared,
+                      linmod.pval.zero.inflated = linmod.zero.inflated$coefficients[grep("x.", rownames(linmod.zero.inflated$coefficients)),"Pr(>|t|)"],
+                      linmod.beta.zero.inflated = linmod.zero.inflated$coefficients[grep("x.", rownames(linmod.zero.inflated$coefficients)),"Estimate"],
+                      spearman.cor.zero.inflated.transformed = cor.zero.inflated.transformed$estimate,
+                      spearman.cor.pval.zero.inflated.transformed = cor.zero.inflated.transformed$p.value,
+                      linmod.r2.zero.inflated.transformed = linmod.zero.inflated.transformed$r.squared,
+                      linmod.pval.zero.inflated.transformed = linmod.zero.inflated.transformed$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed$coefficients)),"Pr(>|t|)"],
+                      linmod.beta.zero.inflated.transformed = linmod.zero.inflated.transformed$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed$coefficients)),"Estimate"])
+    
+    # return res dt just created
+    return(res)
+  }) 
+  # End: loop --------------------------------------------
+  
+  # bind together 
+  lm.cor.res <- rbindlist(lm.cor.res)
+  
+  # add infos
+  lm.cor.res[ , `:=`(num = my.combat.run$num,
+                     combat.run = my.combat.run$combat.run,
+                     combat.sub.run = my.combat.run$sub.run,
+                     realization = my.combat.run$realization,
+                     effekt = my.combat.run$effekte,
+                     n = my.combat.run$n,
+                     proz0 = my.combat.run$proz0,
+                     categart = my.combat.run$categart,
+                     categnum = my.combat.run$categnum)]
+  
+  #-----------------------------------------------------------------
+  # Form Categories over zero-inflated data
+  #-----------------------------------------------------------------
+  
+  #get the cols to categorise
+  cols.to.categorise <- grep("y.0infl.[0-9]{1,2}$", names(combat.data), value = T)
+  
+  if(my.categart == "quantile") {
+    
+    # loop through each col and create ordered factor based on quantile
+    categorised.cols <- combat.data[ , lapply(.SD, function(i){
+      
+      # i <- combat.data$y.0infl.45 # debug
+      dummy <- data.table(data.no.categ = i)
+      dummy[data.no.categ > 0, data.categ :=  cut(data.no.categ,
+                                                  breaks = unique(quantile(data.no.categ,
+                                                                           probs = seq(0, 1, 1 / my.categnum))),
+                                                  include.lowest = T)]
+      categs.created <- dummy[, levels(data.categ)]
+      dummy[data.no.categ <= 0, data.categ := factor(0, labels =  "[0]", ordered = T)]
+      dummy[, data.categ := factor(data.categ, levels = c("[0]", categs.created), ordered = T)]
+      
+      # get output and return it
+      output <- dummy$data.categ
+      return(output)
+    }), .SDcols = cols.to.categorise]
+    
+  } else if(my.categart == "bereiche"){
+    
+    # loop through each col and create ordered factor based on range
+    categorised.cols <- combat.data[ , lapply(.SD, function(i){
+      
+      # i <- combat.data$y.0infl.45 # debug
+      dummy <- data.table(data.no.categ = i)
+      dummy[data.no.categ > 0, data.categ :=  cut(data.no.categ,
+                                                  breaks = seq(0, max(data.no.categ),
+                                                               length.out = my.categnum + 1),
+                                                  include.lowest = T)]
+      categs.created <- dummy[, levels(data.categ)]
+      dummy[data.no.categ <= 0, data.categ := factor(0, labels =  "[0]", ordered = T)]
+      dummy[, data.categ := factor(data.categ, levels = c("[0]", categs.created), ordered = T)]
+      
+      # get output and return it
+      output <- dummy$data.categ
+      return(output)
+    }), .SDcols = cols.to.categorise]
     
   } else {
     stop("Error")
   }
   
-  # now we have the complete data and start fitting the model
-  # start with fitting the regular glm for a dichotomized y
-  linmod.dicho <- df[, summary(glm(y.0infl > 0 ~ x, family = "binomial"))]
-  linmod.dicho.coefs <- setDT(as.data.frame(coefficients(linmod.dicho)), keep.rownames = T)
-  linmod.dicho.pval <- unlist(linmod.dicho.coefs[rn == "x", "Pr(>|z|)"])
-  linmod.dicho.beta <- unlist(linmod.dicho.coefs[rn == "x","Estimate"])
+  # rename
+  names(categorised.cols) <- paste0(names(categorised.cols), ".categorical")
   
-  # enter results
-  res[, `:=`(dicho.pval = linmod.dicho.pval,
-             dicho.beta = linmod.dicho.beta,
-             dicho.AIC = linmod.dicho$aic)]
+  # enter into combat.data for processing
+  combat.data[ , names(categorised.cols) := categorised.cols]
   
-  # fit the ordinal proportional odds model
-  logit.mod <- df[, summary(ordinal::clm(y.0infl.categ ~ x))]
-  logit.mod.2 <- df[, ordinal::clm(y.0infl.categ ~ x)]
-  logit.coefs <- setDT(as.data.frame(logit.mod$coefficients), keep.rownames = T)
-  logit.pval <- unlist(logit.coefs[rn == "x", "Pr(>|z|)"])
+  #-----------------------------------------------------------------
+  # Fit Models on categorical data
+  #-----------------------------------------------------------------
   
-  # enter results
-  res[, `:=`(logit.beta = logit.mod.2$beta,
-             logit.pval = logit.pval,
-             logit.AIC = as.numeric(logit.mod.2$info$AIC))]
+  #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
+  ### BAUSTELLE ######################
+  #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
+  lm.categ.res.raw <- lapply(my.combat.run$sub.run, function(x){
+    
+    # formulas for model definition
+    dicho.val.name <- paste0("y.0infl.", x)
+    categ.val.name <- paste0("y.0infl.", x, ".categorical")
+    my.formula.linmod.dicho <- as.formula(paste0(dicho.val.name, "> 0 ~ ", "x.", x))
+    my.formula.linmod.logit <- as.formula(paste0(categ.val.name," ~ ", "x.", x))
+    
+    # run the model
+    linmod.dicho <- summary(glm(formula = my.formula.linmod.dicho, family = "binomial", data = combat.data))
+    logit.mod <- ordinal::clm(formula = my.formula.linmod.logit, data = combat.data)
+    
+    # extract coefficients
+    #glm
+    linmod.dicho.coefs <- setDT(as.data.frame(coefficients(linmod.dicho)), keep.rownames = T)
+    linmod.dicho.pval <- unlist(linmod.dicho.coefs[rn == grep("x.[0-9]{1,2}", linmod.dicho.coefs$rn, value = T), "Pr(>|z|)"])
+    linmod.dicho.beta <- unlist(linmod.dicho.coefs[rn == grep("x.[0-9]{1,2}", linmod.dicho.coefs$rn, value = T), "Estimate"])
+    
+    # ordinal
+    logit.coeffs <- as.data.table(as.data.frame(summary(logit.mod)$coefficients), keep.rownames = T)
+    logit.beta <- logit.mod$beta
+    logit.pval <- unlist(logit.coeffs[rn == grep("x.[0-9]{1,2}", logit.coeffs$rn, value = T), "Pr(>|z|)"])
+    logit.aic <- as.numeric(levels(logit.mod$info$AIC))
+    
+    # enter coefficients into result file
+    res <- data.table(dicho.pval = linmod.dicho.pval,
+                      dicho.beta = linmod.dicho.beta,
+                      dicho.AIC = linmod.dicho$aic,
+                      logit.beta = logit.beta,
+                      logit.pval = logit.pval,
+                      logit.AIC = logit.aic)
+    
+    # return res
+    return(res)
+  })
   
-  return(res)
-}, mc.cores = number.of.cores, mc.cleanup = T)
+  lm.categ.res <- rbindlist(lm.categ.res.raw)
+  
+  lm.cor.res[ , names(lm.categ.res) := lm.categ.res]
+    #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
+    #==================================#
+    #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
+
+}, mc.cores = number.of.cores, mc.cleanup = T) # END OUTER LOOP
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#=============================================================#
 
 # bind everything together
 all.scenarios <- rbindlist(res)
 
+warnings()
 ```
 
 ```{r save}

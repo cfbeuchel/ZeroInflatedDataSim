@@ -318,7 +318,8 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
                      n = my.combat.run$n,
                      proz0 = my.combat.run$proz0,
                      categart = my.combat.run$categart,
-                     categnum = my.combat.run$categnum)]
+                     categnum = my.combat.run$categnum,
+                     batch.effect = my.combat.run$batch)]
   
   #-----------------------------------------------------------------
   # Form Categories over zero-inflated data

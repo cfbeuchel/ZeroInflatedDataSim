@@ -136,7 +136,7 @@ p2.5 <- ggplot(test.1, aes(-log10(dicho.pval),
   scale_y_continuous(breaks = pretty_breaks(4)) +
   geom_abline(intercept = 0, slope = 1, lty = 2) +
   scale_color_distiller(palette="Spectral") +
-  scale_alpha_manual(values = c(0.3, 0.5, 0.9)) + 
+  scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
   theme_carl()
   
 p2.5
@@ -148,7 +148,9 @@ kable(all.scenarios[ , lapply(.SD, function(x) sum(x <= 0.05)), by = .(categart,
                                  "spearman.cor.pval.full.data",
                                  "spearman.cor.zero.inflated",
                                  "logit.pval",
-                                 "dicho.pval")])
+                                 "dicho.pval",
+                                 "spearman.cor.pval.zero.inflated.transformed",
+                                 "linmod.beta.zero.inflated.transformed")])
 ```
 
 ## Linear model vs. proportional odds model
@@ -332,7 +334,9 @@ test.3 <- melt(data = all.scenarios,
                                 "linmod.pval.zero.inflated",
                                 "linmod.pval.full.data",
                                 "spearman.cor.pval.zero.inflated",
-                                "spearman.cor.pval.full.data"))
+                                "spearman.cor.pval.full.data",
+                                "spearman.cor.pval.zero.inflated.transformed",
+                                "linmod.pval.zero.inflated.transformed"))
 
 # outer loop for proz0
 lapply(unique(all.scenarios$proz0), function(y){
@@ -380,7 +384,7 @@ p_8 <- function(x,y) {
     xlab(x) +
     scale_x_continuous(breaks = pretty_breaks(6)) +
     scale_y_continuous(breaks = pretty_breaks(9)) +
-    scale_alpha_manual(values = c(0.3, 0.5, 0.9)) + 
+    scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
     theme_carl()
   
   # plot
@@ -399,6 +403,27 @@ p8.2 <- p_8(x = "linmod.beta.full.data",
   ggtitle(label = "Beta estimate comparison", subtitle = "Zero-infalted prop-odds vs.\n full data fit with lm")
 p8.2
 ```
+
+## Comparison of inverse-normal transformed zero-inflated data fit in lm()
+
+Check performance of inverse-normal transformed data against categorical and regular zero-inflated data
+
+```{r question.6}
+q_4(x = "linmod.pval.full.data", y = "linmod.pval.zero.inflated.transformed")
+q_4(x = "linmod.pval.zero.inflated", y = "linmod.pval.zero.inflated.transformed")
+q_4(x = "logit.pval", y = "linmod.pval.zero.inflated.transformed")
+q_4(x = "spearman.cor.pval.zero.inflated.transformed", y = "spearman.cor.pval.zero.inflated")
+q_4(x = "spearman.cor.pval.zero.inflated.transformed", y = "linmod.pval.zero.inflated.transformed")
+
+# effect sizes
+p_8(x = "linmod.beta.zero.inflated.transformed", y = "logit.beta")
+p_8(x = "linmod.beta.zero.inflated.transformed", y = "linmod.beta.zero.inflated")
+p_8(x = "linmod.beta.zero.inflated.transformed", y = "linmod.beta.full.data")
+
+# also display results based on whether a batch effect was added or not
+
+```
+
 
 ```{r save}
 # write.table(x = all.scenarios,

@@ -106,7 +106,7 @@ Taking the average p-values over all realizations provides a clearer picture for
 ```{r question.1.2, results='markup'}
 # plot mean (over realizations) dicho vs. prop odds pvals
 # über realisationen mitteln für Übersichtlichkeit
-test.1 <- all.scenarios[, lapply(.SD, mean), by = .(effekt, proz0, categart, categnum)]
+test.1 <- all.scenarios[, lapply(.SD, mean), by = .(effekt, proz0, categart, categnum, batch.effect)]
 p2 <- ggplot(test.1, aes(x = -log10(dicho.pval),
                          y = -log10(logit.pval),
                          col = factor(proz0),
@@ -260,10 +260,10 @@ Comparing the results of the, always fit with zero-inflated data, prop-odds mode
 
 ```{r question.4.1.prep, results='markup'}
 q_4 <- function(x,y) {
-  p4 <- ggplot(test.1, aes(x = -log10(get(x)),
+  p4 <- ggplot(test.1[categart == "bereiche", ], aes(x = -log10(get(x)),
                            y = -log10(get(y)),
                            col = factor(proz0),
-                           pch = categart,
+                           pch = batch.effect,
                            size = categnum,
                            alpha = rev(categnum))) + 
     geom_point() +
@@ -421,6 +421,40 @@ p_8(x = "linmod.beta.zero.inflated.transformed", y = "linmod.beta.zero.inflated"
 p_8(x = "linmod.beta.zero.inflated.transformed", y = "linmod.beta.full.data")
 
 # also display results based on whether a batch effect was added or not
+melt.1 <- melt(test.1, id.vars = c("effekt", "proz0", "categart", "categnum", "batch.effect"))
+ggplot(test.1, aes())
+
+# pvalues based on batch.effect
+ggplot(test.1[categart == "bereiche",], aes(-log10(linmod.pval.zero.inflated),
+                   -log10(linmod.pval.zero.inflated.transformed),
+                   col = factor(categnum),
+                   pch = factor(batch.effect),
+                   size = proz0,
+                   alpha = rev(factor(proz0)))) +
+  geom_point() +
+  facet_wrap(~effekt, scales = "free") +
+  scale_x_continuous(breaks = pretty_breaks(4)) +
+  scale_y_continuous(breaks = pretty_breaks(4)) +
+  geom_abline(intercept = 0, slope = 1, lty = 2) +
+  scale_color_brewer(palette="Spectral") +
+  scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
+  theme_carl()
+
+ggplot(test.1[categart == "bereiche",], aes(-log10(linmod.pval.full.data),
+                   -log10(linmod.pval.zero.inflated.transformed),
+                   col = factor(categnum),
+                   pch = factor(batch.effect),
+                   size = proz0,
+                   alpha = rev(factor(proz0)))) +
+  geom_point() +
+  facet_wrap(~effekt, scales = "free") +
+  scale_x_continuous(breaks = pretty_breaks(4)) +
+  scale_y_continuous(breaks = pretty_breaks(4)) +
+  geom_abline(intercept = 0, slope = 1, lty = 2) +
+  scale_color_brewer(palette="Spectral") +
+  scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
+  theme_carl()
+# pvals, beta, r² of transformed data based on batch 1/0
 
 ```
 

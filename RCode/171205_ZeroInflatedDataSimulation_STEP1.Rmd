@@ -50,6 +50,8 @@ for (i in c(
   suppressPackageStartupMessages(library(i, character.only = TRUE))
 }
 
+# source small function
+source("/net/ifs1/san_projekte/projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/functions/batch_anova.R")
 ```
 
 ## Data simulation and setup
@@ -201,8 +203,20 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   #-----------------------------------------------------------------
   
   # get cols 
-  zero.infl.cols <- names(combat.data)[grep("y.0infl", names(combat.data))]
-  y.cols <- names(combat.data)[grep("^y.", names(combat.data))]
+  zero.infl.cols <- names(combat.data)[grep("y.0infl.[0-9]{1,2}$", names(combat.data))]
+  y.cols <- names(combat.data)[grep("^y.[0-9]{1,2}$", names(combat.data))]
+  
+  #-----------------------------------------------------------------
+  # Pre-ComBat ANOVA
+  #-----------------------------------------------------------------
+  
+  full.before.combat.aov <- batch_anova(data = combat.data,
+                                        to.adjust = y.cols,
+                                        batch = "batch")
+  
+  zero.infl.before.combat.aov <- batch_anova(data = combat.data,
+                                             to.adjust = zero.infl.cols,
+                                             batch = "batch")
   
   # designate transposed matrix for adjustment
   my.edata.y.zero.infl <- combat.data[, t(as.matrix(.SD)), .SDcols = zero.infl.cols]
@@ -235,6 +249,18 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   # re-enter adjusted data into dat
   combat.data[, (zero.infl.cols) := as.data.table(t(combat.edata.zero.infl))]
   combat.data[, (y.cols) := as.data.table(t(combat.edata.y))]
+  
+  #-----------------------------------------------------------------
+  # Post-ComBat ANOVA
+  #-----------------------------------------------------------------
+  
+  full.after.combat.aov <- batch_anova(data = combat.data,
+                                       to.adjust = y.cols,
+                                       batch = "batch")
+  
+  zero.infl.after.combat.aov <- batch_anova(data = combat.data,
+                                            to.adjust = zero.infl.cols,
+                                            batch = "batch")
   
   #-----------------------------------------------------------------
   # Inverse-normal transformation
@@ -309,7 +335,7 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   # bind together 
   lm.cor.res <- rbindlist(lm.cor.res)
   
-  # add infos
+  # add infos + infos from anova
   lm.cor.res[ , `:=`(num = my.combat.run$num,
                      combat.run = my.combat.run$combat.run,
                      combat.sub.run = my.combat.run$sub.run,
@@ -319,7 +345,11 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
                      proz0 = my.combat.run$proz0,
                      categart = my.combat.run$categart,
                      categnum = my.combat.run$categnum,
-                     batch.effect = my.combat.run$batch)]
+                     batch.effect = my.combat.run$batch,
+                     p.ANOVA.full.pre.ComBat = full.before.combat.aov$p.values,
+                     p.ANOVA.full.post.ComBat = full.after.combat.aov$p.values,
+                     p.ANOVA.zero.infl.pre.ComBat = zero.infl.before.combat.aov$p.values,
+                     p.ANOVA.zero.infl.post.ComBat = zero.infl.after.combat.aov$p.values)]
   
   #-----------------------------------------------------------------
   # Form Categories over zero-inflated data
@@ -328,7 +358,7 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   my.categnum <- (unique(my.combat.run$categnum))
   
   #get the cols to categorise
-  cols.to.categorise <- grep("y.0infl.[0-9]{1,2}$", names(combat.data), value = T)
+  cols.to.categorise <- grep("^y.0infl.[0-9]{1,2}$", names(combat.data), value = T)
   
   if(my.categart == "quantile") {
     
@@ -425,7 +455,7 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   
   # return
   return(lm.cor.res)
-    
+  
 }, mc.cores = number.of.cores, mc.cleanup = T) # END OUTER LOOP
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 #=============================================================#

@@ -6,6 +6,8 @@ number_sections: false
 toc_depth: 3
 author: "Carl Beuchel"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r knitr, cache = F, results = "markup", echo = T, warning = T}
@@ -40,6 +42,7 @@ for (i in c(
   "data.table",
   "broom",
   "ordinal",
+  # "sva",
   # "MASS",
   "parallel",
   "CarlHelpR",
@@ -118,7 +121,7 @@ options(nwarnings = 50000)
 all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x) { # OUTER LOOP
   
   # create sub-scenario
-  # x <- 1 # debug
+  # x <- 5251 # debug
   message(paste("\nStarting run:", x, "#==============================================#\n"))
   my.combat.run <- szenarien[combat.run == x, ]
   my.combat.run[, sub.run := 1:.N]
@@ -288,6 +291,23 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   combat.data[ , names(transformed.cols) := transformed.cols]
   
   #-----------------------------------------------------------------
+  # Rescale Transformed data
+  #-----------------------------------------------------------------
+  
+  combat.data[ , paste0(names(transformed.cols), ".rescaled") := lapply(.SD, function(x){
+    x.new <- sd(x) * x
+    return(x)
+  }), .SDcols = names(transformed.cols)]
+    
+  #-----------------------------------------------------------------
+  # Post-ComBat ANOVA
+  #-----------------------------------------------------------------
+  
+  zero.infl.after.combat.after.transform.aov <- batch_anova(data = combat.data,
+                                            to.adjust = names(transformed.cols),
+                                            batch = "batch")
+  
+  #-----------------------------------------------------------------
   # fit lm on each ComBat chunk (96)
   #-----------------------------------------------------------------
   
@@ -299,11 +319,13 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
     my.formula.full <- as.formula(paste0("y.", f, " ~ ", "x.", f))
     my.formula.0infl <- as.formula(paste0("y.0infl.", f, " ~ ", "x.", f))
     my.formula.0infl.transformed <- as.formula(paste0("y.0infl.", f, ".transformed ", " ~ ", "x.", f))
+    my.formula.0infl.transformed.rescaled <- as.formula(paste0("y.0infl.", f, ".transformed.rescaled ", " ~ ", "x.", f))
     
     # calc the lm
     linmod.full.data <- summary(lm(my.formula.full, data = combat.data)) 
     linmod.zero.inflated <- summary(lm(my.formula.0infl, data = combat.data)) 
     linmod.zero.inflated.transformed <- summary(lm(my.formula.0infl.transformed, data = combat.data)) 
+    linmod.zero.inflated.transformed.rescaled <- summary(lm(my.formula.0infl.transformed.rescaled, data = combat.data)) 
     
     # do the rank correlation
     cor.full.data <- tidy(combat.data[, cor.test(x = get(paste0("x.", f)), y = get(paste0("y.", f)), method = "spearman")])
@@ -325,7 +347,9 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
                       spearman.cor.pval.zero.inflated.transformed = cor.zero.inflated.transformed$p.value,
                       linmod.r2.zero.inflated.transformed = linmod.zero.inflated.transformed$r.squared,
                       linmod.pval.zero.inflated.transformed = linmod.zero.inflated.transformed$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed$coefficients)),"Pr(>|t|)"],
-                      linmod.beta.zero.inflated.transformed = linmod.zero.inflated.transformed$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed$coefficients)),"Estimate"])
+                      linmod.beta.zero.inflated.transformed = linmod.zero.inflated.transformed$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed$coefficients)),"Estimate"],
+                      linmod.pval.zero.inflated.transformed.rescaled = linmod.zero.inflated.transformed.rescaled$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed.rescaled$coefficients)),"Pr(>|t|)"],
+                      linmod.beta.zero.inflated.transformed.rescaled = linmod.zero.inflated.transformed.rescaled$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed.rescaled$coefficients)),"Estimate"])
     
     # return res dt just created
     return(res)
@@ -349,7 +373,8 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
                      p.ANOVA.full.pre.ComBat = full.before.combat.aov$p.values,
                      p.ANOVA.full.post.ComBat = full.after.combat.aov$p.values,
                      p.ANOVA.zero.infl.pre.ComBat = zero.infl.before.combat.aov$p.values,
-                     p.ANOVA.zero.infl.post.ComBat = zero.infl.after.combat.aov$p.values)]
+                     p.ANOVA.zero.infl.post.ComBat = zero.infl.after.combat.aov$p.values,
+                     p.ANOVA.zero.infl.post.ComBat.post.transformation = zero.infl.after.combat.after.transform.aov$p.values)]
   
   #-----------------------------------------------------------------
   # Form Categories over zero-inflated data

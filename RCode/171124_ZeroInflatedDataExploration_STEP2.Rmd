@@ -31,10 +31,10 @@ This script is a small data simulation to help figure out an appropriate data tr
 
 ```{r initiate}
 # define alternative package directory
-r_on_server <- F # MANUAL EDIT! ARE YOU ON LOCAL R SESSION OR USING ONE OF THE IMISE SERVERS (E.G. FOROSTAR)?
+r_on_server <- T # MANUAL EDIT! ARE YOU ON LOCAL R SESSION OR USING ONE OF THE IMISE SERVERS (E.G. FOROSTAR)?
 if (r_on_server == T) {
   computer <- "forostar" # MANUAL EDIT! SEE THE FOLDER RIGHT BELOW FOR THE APPROPRIATE PACKAGE FOLDERS
-  .libPaths(paste0("/mnt/ifs1_projekte/genstat/07_programme/rpackages/", computer))
+  .libPaths(paste0("/net/ifs1/san_projekte/projekte/genstat/07_programme/rpackages/", computer))
 }
 
 # Packages for efficiently loading data
@@ -62,10 +62,10 @@ all.scenarios <- fread(newest.results)
 # Exploratory plots
 
 There are a few descisions that I need to make:
- * Bereiche or Quantile?
- * Best number of categories?
- * Performance compared with dichotomized glm?
- * Performance compared with Rank correlation?
+* Bereiche or Quantile?
+* Best number of categories?
+* Performance compared with dichotomized glm?
+* Performance compared with Rank correlation?
 
 
 Our best guess was, that grouping the metabolites into more categories than just 2 would result in the retaining of information and thus statistical power. These plots are supposed to illustrate the comparison between dichotomization and different versions of the proportional odds approach.
@@ -125,11 +125,11 @@ p2 <- ggplot(test.1, aes(x = -log10(dicho.pval),
 
 # same as p2 but with different symbols etc.
 p2.5 <- ggplot(test.1, aes(-log10(dicho.pval),
-                   -log10(logit.pval),
-                   col = categnum,
-                   pch = categart,
-                   size = proz0,
-                   alpha = rev(factor(proz0)))) +
+                           -log10(logit.pval),
+                           col = categnum,
+                           pch = categart,
+                           size = proz0,
+                           alpha = rev(factor(proz0)))) +
   geom_point() +
   facet_wrap(~effekt, scales = "free") +
   scale_x_continuous(breaks = pretty_breaks(4)) +
@@ -138,7 +138,7 @@ p2.5 <- ggplot(test.1, aes(-log10(dicho.pval),
   scale_color_distiller(palette="Spectral") +
   scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
   theme_carl()
-  
+
 p2.5
 
 # number of categories as deciding factor
@@ -199,10 +199,10 @@ p4
 
 # large categories
 p4.1 <- ggplot(test.1[categnum %in% c(7,8,9,10,20,30,40,50),],
-             aes(x = categnum,
-                 y = -log10(logit.pval),
-                 pch = categart,
-                 color = factor(proz0))) +
+               aes(x = categnum,
+                   y = -log10(logit.pval),
+                   pch = categart,
+                   color = factor(proz0))) +
   facet_wrap(~ effekt, scale = "free") +
   geom_smooth(method = "loess", aes(group = paste(factor(proz0), categart), lty = categart), alpha = 0.2, fullrange = T, span = 1.5) +
   geom_point(size = 2.5) +
@@ -216,10 +216,10 @@ p4.1
 
 # look at categories 2:10
 p4.2 <- ggplot(test.1[categnum %in% c(2:10,20), ],
-             aes(x = categnum,
-                 y = -log10(logit.pval),
-                 pch = categart,
-                 color = factor(proz0))) +
+               aes(x = categnum,
+                   y = -log10(logit.pval),
+                   pch = categart,
+                   color = factor(proz0))) +
   facet_wrap(~ effekt, scale = "free") +
   geom_smooth(method = "loess", aes(group = paste(factor(proz0), categart), lty = categart), alpha = 0.2, fullrange = T, span = 1.5) +
   geom_point(size = 2.5) +
@@ -239,12 +239,13 @@ The previous plots suggest that the categories based on quantiles perform better
 ```{r question.3, results='markup'}
 # third question: Bereiche oder Quantile
 # plot bereiche ~ quantile pvals
-test.2 <- dcast.data.table(data = test.1, formula = effekt + proz0 + categnum ~ categart, value.var = "logit.pval")
+test.2 <- dcast.data.table(data = test.1, formula = effekt + proz0 + categnum + batch.effect ~ categart, value.var = "logit.pval")
 p5 <- ggplot(test.2,
-       aes(x = -log10(bereiche),
-           y = -log10(quantile),
-           color = categnum,
-           size = as.factor(proz0))) +
+             aes(x = -log10(bereiche),
+                 y = -log10(quantile),
+                 color = categnum,
+                 size = proz0,
+                 pch = factor(batch.effect))) +
   facet_wrap(~effekt, scale = "free") + 
   geom_point(alpha = 1) +
   geom_abline(intercept = 0, slope = 1) + 
@@ -261,11 +262,11 @@ Comparing the results of the, always fit with zero-inflated data, prop-odds mode
 ```{r question.4.1.prep, results='markup'}
 q_4 <- function(x,y) {
   p4 <- ggplot(test.1[categart == "bereiche", ], aes(x = -log10(get(x)),
-                           y = -log10(get(y)),
-                           col = factor(proz0),
-                           pch = batch.effect,
-                           size = categnum,
-                           alpha = rev(categnum))) + 
+                                                     y = -log10(get(y)),
+                                                     col = factor(proz0),
+                                                     pch = factor(batch.effect),
+                                                     size = categnum,
+                                                     alpha = rev(categnum))) + 
     geom_point() +
     ylab(y) +
     xlab(x) +
@@ -273,7 +274,7 @@ q_4 <- function(x,y) {
     scale_color_brewer(palette="Set1") + 
     scale_alpha_continuous(range = c(0.3, 1)) +
     facet_wrap(~effekt , scales = "free") + 
-    theme_carl()
+    theme_light()
   return(p4)
 }
 ```
@@ -325,10 +326,10 @@ p4.3.2 <- q_4(x = "spearman.cor.pval.zero.inflated", y = "logit.pval")
 p4.3.2
 ```
 
-```{r question.4.4, include = F}
+```{r question.4.4, include = F, eval = F}
 # boxplot
 test.3 <- melt(data = all.scenarios,
-               id.vars = c("effekt", "proz0", "categart", "categnum"),
+               id.vars = c("effekt", "proz0", "categart", "categnum", "batch.effect"),
                measure.vars = c("logit.pval",
                                 "dicho.pval",
                                 "linmod.pval.zero.inflated",
@@ -369,13 +370,13 @@ Plotting the average effect sizes from the linear model and the prop-odds model 
 p_8 <- function(x,y) {
   
   # define
-  p8 <- ggplot(test.1,
-         aes(x = get(x),
-             y = get(y),
-             size = categnum,
-             col = factor(effekt),
-             pch = categart,
-             alpha = rev(factor(proz0)))) +
+  p8 <- ggplot(test.1[categart == "bereiche",],
+               aes(x = get(x),
+                   y = get(y),
+                   size = proz0,
+                   col = factor(effekt),
+                   pch = factor(batch.effect),
+                   alpha = rev(factor(proz0)))) +
     geom_point() +
     geom_abline(intercept = 0, slope = 1, lty = 2, col = "black") +
     # facet_wrap( ~ , scales = "fixed") +
@@ -393,13 +394,13 @@ p_8 <- function(x,y) {
 
 # define effect-size plot with zero-inflated linmod data
 p8.1 <- p_8(x = "linmod.beta.zero.inflated",
-             y = "logit.beta") + 
+            y = "logit.beta") + 
   ggtitle(label = "Beta estimate comparison", subtitle = "Zero-infalted prop-odds vs.\nzero-inflated data fit with lm")
 p8.1
 
 # define effect-size plot with zero-inflated linmod data
 p8.2 <- p_8(x = "linmod.beta.full.data",
-             y = "logit.beta") + 
+            y = "logit.beta") + 
   ggtitle(label = "Beta estimate comparison", subtitle = "Zero-infalted prop-odds vs.\n full data fit with lm")
 p8.2
 ```
@@ -417,20 +418,49 @@ q_4(x = "spearman.cor.pval.zero.inflated.transformed", y = "linmod.pval.zero.inf
 
 # effect sizes
 p_8(x = "linmod.beta.zero.inflated.transformed", y = "logit.beta")
-p_8(x = "linmod.beta.zero.inflated.transformed", y = "linmod.beta.zero.inflated")
-p_8(x = "linmod.beta.zero.inflated.transformed", y = "linmod.beta.full.data")
+p_8(x = "linmod.beta.zero.inflated.transformed", y = "linmod.beta.zero.inflated") +
+  xlim(c(0,0.4)) +
+  ylim(c(0,0.4)) +
+  geom_vline(xintercept = c(0,0.01,0.02,0.05,0.1,0.3)) +
+  geom_hline(yintercept = c(0,0.01,0.02,0.05,0.1,0.3)) +
+  ggtitle(label = "Beta comparison",
+          subtitle = "zero-inflated data ~ zero-inflated transformed data")
 
-# also display results based on whether a batch effect was added or not
-melt.1 <- melt(test.1, id.vars = c("effekt", "proz0", "categart", "categnum", "batch.effect"))
-ggplot(test.1, aes())
+p_8(x = "linmod.beta.zero.inflated.transformed", y = "linmod.beta.full.data") +
+  xlim(c(0,0.4)) +
+  ylim(c(0,0.4)) +
+  geom_vline(xintercept = c(0,0.01,0.02,0.05,0.1,0.3)) +
+  geom_hline(yintercept = c(0,0.01,0.02,0.05,0.1,0.3)) +
+  ggtitle(label = "Beta comparison",
+          subtitle = "Full data ~ zero-inflated transformed data")
+
+# pvals, beta, r² of transformed data based on batch 1/0
+
+qq_conf(test.1$p.ANOVA.full.pre.ComBat, main = "QQplot full data before ComBat")
+qq_conf(test.1$p.ANOVA.full.post.ComBat, main = "QQplot full data after ComBat")
+qq_conf(test.1$p.ANOVA.zero.infl.pre.ComBat, main = "QQplot zero-inflated data before ComBat")
+qq_conf(test.1$p.ANOVA.zero.infl.post.ComBat, main = "QQplot zero-inflated data after ComBat")
 
 # pvalues based on batch.effect
-ggplot(test.1[categart == "bereiche",], aes(-log10(linmod.pval.zero.inflated),
-                   -log10(linmod.pval.zero.inflated.transformed),
-                   col = factor(categnum),
-                   pch = factor(batch.effect),
-                   size = proz0,
-                   alpha = rev(factor(proz0)))) +
+ggplot(test.1[categart == "bereiche" & categnum == 20,], aes(-log10(linmod.pval.zero.inflated),
+                                                             -log10(linmod.pval.zero.inflated.transformed),
+                                                             col = factor(proz0),
+                                                             pch = factor(batch.effect))) +
+  geom_point() +
+  facet_wrap(~effekt, scales = "free") +
+  scale_x_continuous(breaks = pretty_breaks(4)) +
+  scale_y_continuous(breaks = pretty_breaks(4)) +
+  geom_abline(intercept = 0, slope = 1, lty = 2) +
+  scale_color_brewer(palette="Spectral") +
+  scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
+  theme_minimal()
+
+ggplot(test.1[categart == "bereiche",], aes(-log10(linmod.pval.full.data),
+                                            -log10(linmod.pval.zero.inflated.transformed),
+                                            col = factor(categnum),
+                                            pch = factor(batch.effect),
+                                            size = proz0,
+                                            alpha = rev(factor(proz0)))) +
   geom_point() +
   facet_wrap(~effekt, scales = "free") +
   scale_x_continuous(breaks = pretty_breaks(4)) +
@@ -440,21 +470,39 @@ ggplot(test.1[categart == "bereiche",], aes(-log10(linmod.pval.zero.inflated),
   scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
   theme_carl()
 
-ggplot(test.1[categart == "bereiche",], aes(-log10(linmod.pval.full.data),
-                   -log10(linmod.pval.zero.inflated.transformed),
-                   col = factor(categnum),
-                   pch = factor(batch.effect),
-                   size = proz0,
-                   alpha = rev(factor(proz0)))) +
+
+
+p10 <- ggplot(test.1[categart == "bereiche" & categnum == 20, ],
+              aes(x = -log10(p.ANOVA.full.post.ComBat),
+                  y = -log10(p.ANOVA.zero.infl.post.ComBat),
+                  col = factor(proz0),
+                  pch = factor(batch.effect),
+                  size = batch.effect)) + 
   geom_point() +
-  facet_wrap(~effekt, scales = "free") +
-  scale_x_continuous(breaks = pretty_breaks(4)) +
-  scale_y_continuous(breaks = pretty_breaks(4)) +
+  ylab("p.ANOVA.zero.infl.post.ComBat") +
+  xlab("p.ANOVA.full.post.ComBat") +
   geom_abline(intercept = 0, slope = 1, lty = 2) +
-  scale_color_brewer(palette="Spectral") +
-  scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
-  theme_carl()
-# pvals, beta, r² of transformed data based on batch 1/0
+  scale_color_brewer(palette="Set1") + 
+  scale_size(range = c(2, 4)) +
+  facet_wrap(~effekt , scales = "free") + 
+  theme_light()
+p10
+
+p11 <- ggplot(test.1[categart == "bereiche" & categnum == 20, ],
+              aes(x = -log10(p.ANOVA.full.pre.ComBat),
+                  y = -log10(p.ANOVA.zero.infl.pre.ComBat),
+                  col = factor(proz0),
+                  pch = factor(batch.effect),
+                  size = batch.effect)) + 
+  geom_point() +
+  ylab("p.ANOVA.zero.infl.pre.ComBat") +
+  xlab("p.ANOVA.full.pre.ComBat") +
+  geom_abline(intercept = 0, slope = 1, lty = 2) +
+  scale_color_brewer(palette="Set1") + 
+  scale_size(range = c(2, 4)) +
+  facet_wrap(~effekt , scales = "free") + 
+  theme_light()
+p11
 
 ```
 

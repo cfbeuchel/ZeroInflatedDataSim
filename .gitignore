@@ -15,6 +15,7 @@
 /*.Rcheck/
 
 # RStudio files
+.RProj
 .Rproj.user/
 
 # produced vignettes
@@ -37,13 +38,18 @@ vignettes/*.pdf
 *.Rout
 
 # ingore locally computed result files and _archives
-/results/
-/RCode/_archive/
-/plots/
+results/*
+RCode/_archive/*
+plots/*
 */_archive/
+
+# exception to the rule
+!results/.gitkeep 
+!plots/.gitkeep
 
 # ignore .html outputs
 *.html
 
 # ignore the .R output created by purl() in /RCode
-/RCode/*.R
+RCode/*.R
+Rcode/*.pdf

@@ -137,7 +137,8 @@ p2.5 <- ggplot(test.1, aes(-log10(dicho.pval),
   geom_abline(intercept = 0, slope = 1, lty = 2) +
   scale_color_distiller(palette="Spectral") +
   scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
-  theme_carl()
+  theme_carl() +
+  theme(text = element_text(size=15))
 
 p2.5
 
@@ -380,29 +381,47 @@ p_8 <- function(x,y) {
     geom_point() +
     geom_abline(intercept = 0, slope = 1, lty = 2, col = "black") +
     # facet_wrap( ~ , scales = "fixed") +
-    scale_color_brewer(palette = "Set1") +
+    scale_color_brewer(palette = "Spectral") +
     ylab(y) +
     xlab(x) +
     scale_x_continuous(breaks = pretty_breaks(6)) +
     scale_y_continuous(breaks = pretty_breaks(9)) +
     scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
-    theme_carl()
+    theme_carl() +
+  theme(text = element_text(size=18))
   
   # plot
   p8
 }
 
-# define effect-size plot with zero-inflated linmod data
-p8.1 <- p_8(x = "linmod.beta.zero.inflated",
-            y = "logit.beta") + 
-  ggtitle(label = "Beta estimate comparison", subtitle = "Zero-infalted prop-odds vs.\nzero-inflated data fit with lm")
-p8.1
 
-# define effect-size plot with zero-inflated linmod data
-p8.2 <- p_8(x = "linmod.beta.full.data",
-            y = "logit.beta") + 
-  ggtitle(label = "Beta estimate comparison", subtitle = "Zero-infalted prop-odds vs.\n full data fit with lm")
-p8.2
+p_9 <- function(x,y) {
+  
+  # define
+  p_9 <- ggplot(test.1[categart == "bereiche",],
+               aes(x = -log10(get(x)),
+                   y = -log10(get(y)),
+                   size = proz0,
+                   col = factor(effekt),
+                   pch = factor(batch.effect),
+                   alpha = rev(factor(proz0)))) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, lty = 2, col = "black") +
+    # facet_wrap( ~ , scales = "fixed") +
+    scale_color_brewer(palette = "Spectral") +
+    ylab(y) +
+    xlab(x) +
+    scale_x_continuous(breaks = pretty_breaks(6)) +
+    scale_y_continuous(breaks = pretty_breaks(9)) +
+    scale_alpha_manual(values = c(0.3, 0.5, 0.7, 0.9)) + 
+    theme_carl() +
+  theme(text = element_text(size=18))
+  
+  # plot
+  p_9
+}
+
+
 ```
 
 ## Comparison of inverse-normal transformed zero-inflated data fit in lm()
@@ -410,11 +429,30 @@ p8.2
 Check performance of inverse-normal transformed data against categorical and regular zero-inflated data
 
 ```{r question.6}
-q_4(x = "linmod.pval.full.data", y = "linmod.pval.zero.inflated.transformed")
-q_4(x = "linmod.pval.zero.inflated", y = "linmod.pval.zero.inflated.transformed")
+# define effect-size plot with zero-inflated linmod data
+p8.1 <- p_8(x = "linmod.beta.zero.inflated",
+            y = "logit.beta") + 
+  ggtitle(label = "Beta estimate comparison", subtitle = "Zero-infalted prop-odds vs.\nzero-inflated data fit with lm") +
+  theme(text = element_text(size=15), axis.text.x = element_text(angle=90, hjust=1))
+p8.1
+
+# define effect-size plot with zero-inflated linmod data
+p8.2 <- p_8(x = "linmod.beta.full.data",
+            y = "logit.beta") + 
+  ggtitle(label = "Beta estimate comparison", subtitle = "Zero-infalted prop-odds vs.\n full data fit with lm") +
+  theme(text = element_text(size=15))
+p8.2
+
+p_9(x = "linmod.pval.full.data", y = "linmod.pval.zero.inflated")
+p_9(x = "linmod.pval.full.data", y = "linmod.pval.zero.inflated.transformed")
+
+p_8(x = "linmod.pval.zero.inflated", y = "linmod.pval.zero.inflated.transformed")
+p_9(x = "linmod.pval.zero.inflated", y = "linmod.pval.zero.inflated.transformed")
+
 q_4(x = "logit.pval", y = "linmod.pval.zero.inflated.transformed")
-q_4(x = "spearman.cor.pval.zero.inflated.transformed", y = "spearman.cor.pval.zero.inflated")
-q_4(x = "spearman.cor.pval.zero.inflated.transformed", y = "linmod.pval.zero.inflated.transformed")
+
+p_8(x = "spearman.cor.pval.zero.inflated", y = "linmod.pval.zero.inflated.transformed")
+p_9(x = "spearman.cor.pval.zero.inflated", y = "linmod.pval.zero.inflated.transformed")
 
 # effect sizes
 p_8(x = "linmod.beta.zero.inflated.transformed", y = "logit.beta")

@@ -42,6 +42,7 @@ results/*
 RCode/_archive/*
 plots/*
 */_archive/
+temp/*
 
 # exception to the rule
 !results/.gitkeep 

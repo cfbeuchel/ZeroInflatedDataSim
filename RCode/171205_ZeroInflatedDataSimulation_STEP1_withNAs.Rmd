@@ -31,7 +31,7 @@ r_on_server <- T
 # number of cores used in parallel processing
 if (r_on_server == T) {
   .libPaths("/net/ifs1/san_projekte/projekte/genstat/07_programme/rpackages/forostar/")
-  number.of.cores <- 10
+  number.of.cores <- 5
 } else if (r_on_server == F) {
   number.of.cores <- parallel::detectCores()/2
 }
@@ -158,7 +158,7 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
     
     # way one:
     df[, y.0infl := y]
-    df[y < quantile(y.0infl, probs = my.proz0/100), y.0infl := 0]
+    df[y < quantile(y.0infl, probs = my.proz0/100), y.0infl := NA]
     min.found = df[y.0infl > 0, min(y.0infl)]
     df[y.0infl > 0, y.0infl := y.0infl - 0.99*min.found]
     
@@ -520,7 +520,7 @@ all.scenarios <- rbindlist(all.combat.runs.raw)
 
 # Save for use in STEP2
 save_csv_carl(file = all.scenarios,
-              file_name = "SimulationResultsForSTEP2",
+              file_name = "SimulationResultsWithNAsForSTEP2",
               subfolder = "results")
 ```
 

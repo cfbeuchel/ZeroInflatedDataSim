@@ -33,7 +33,7 @@ This script is a small data simulation to help figure out an appropriate data tr
 # define alternative package directory
 r_on_server <- T # MANUAL EDIT! ARE YOU ON LOCAL R SESSION OR USING ONE OF THE IMISE SERVERS (E.G. FOROSTAR)?
 if (r_on_server == T) {
-  computer <- "forostar" # MANUAL EDIT! SEE THE FOLDER RIGHT BELOW FOR THE APPROPRIATE PACKAGE FOLDERS
+  computer <- "amanMRO" # MANUAL EDIT! SEE THE FOLDER RIGHT BELOW FOR THE APPROPRIATE PACKAGE FOLDERS
   .libPaths(paste0("/net/ifs1/san_projekte/projekte/genstat/07_programme/rpackages/", computer))
 }
 
@@ -314,7 +314,19 @@ First we check what influence the zero-inflation has on the linear model and spe
 
 ```{r question.4.0}
 p5.0.1 <- q_5(x = "linmod.pval.full.data", y = "linmod.pval.zero.inflated")
-p5.0.1
+p5.0.1 +
+  guides(color = F,
+         # alpha = guide_legend(title=NULL),
+         size = guide_legend(title="Zero-Inflation [%]"),
+         pch = guide_legend(title="Batch effect")) + 
+  scale_shape_discrete(labels = c("No", "Yes")) + 
+  scale_alpha_continuous(guide = F, range = c(0.3, 1)) +
+  scale_color_brewer(palette="Dark2") + 
+  xlab(label = expression('-log'[10]*' P-values full data model fit')) +
+  ylab(label = expression('-log'[10]*' P-values zero-inflated data model fit')) +
+  theme(legend.position="top")
+
+  
 
 p5.0.2 <- q_5(x = "spearman.cor.pval.full.data", y = "spearman.cor.pval.zero.inflated")
 p5.0.2
@@ -587,29 +599,36 @@ qq_conf(all.scenarios[combat.run == 1, p.ANOVA.full.post.ComBat],
 qq_conf(all.scenarios[combat.run == 251, p.ANOVA.full.pre.ComBat],
         main = "QQ plot of full data with batch effects pre-ComBat")
 qq_conf(all.scenarios[combat.run == 251, p.ANOVA.full.post.ComBat],
-        main = "QQ plot of full data with batch effects pre-ComBat")
+        main = "QQ plot of full data with batch effects post-ComBat")
+
+pdf("180717_dataSimulationComBatINTBatchEffects.pdf", width = 10, height = 7)
+par(mfrow = c(2,3))
 
 # without batch effect
 qq_conf(all.scenarios[combat.run == 1, p.ANOVA.zero.infl.pre.ComBat],
-        main = "QQ plot of zero-inflated data without batch effects pre-ComBat")
+        main = "QQ plot of zero-inflated data\nwithout batch effects pre-ComBat")
 qq_conf(all.scenarios[combat.run == 1, p.ANOVA.zero.infl.post.ComBat],
-        main = "QQ plot of zero-inflated data without batch effects post-ComBat")
+        main = "QQ plot of zero-inflated data\nwithout batch effects post-ComBat")
 qq_conf(all.scenarios[combat.run == 1, p.ANOVA.zero.infl.post.ComBat.post.transformation],
         main = "QQ plot of zero-inflated data without batch\neffects post-ComBat after INT")
 
 # with batch-effect
 qq_conf(all.scenarios[combat.run == 251, p.ANOVA.zero.infl.pre.ComBat],
-        main = "QQ plot of zero-inflated data with batch effects pre-ComBat")
+        main = "QQ plot of zero-inflated data\nwith batch effects pre-ComBat")
 qq_conf(all.scenarios[combat.run == 251, p.ANOVA.zero.infl.post.ComBat],
-        main = "QQ plot of zero-inflated data with batch effects post-ComBat")
+        main = "QQ plot of zero-inflated data\nwith batch effects post-ComBat")
 qq_conf(all.scenarios[combat.run == 251, p.ANOVA.zero.infl.post.ComBat.post.transformation],
         main = "QQ plot of zero-inflated data with batch\neffects post-ComBat after INT")
+
+dev.off()
 ```
 
 # weird associations after INT
 
 ```{r int.batch.problem, eval = F, include = F}
+# !!!
 # first get the combat.data from STEP1 for combat run 251
+# !!!
 
 fit_plots <- function(combat.data, pdf_name){
 # ComBated data
@@ -655,20 +674,34 @@ for (i in c(81, 85, 89, 93)) {
   eqn.tr <- bquote(italic(beta) == .(b1.tr) * "," ~~ 
                   r^2 == .(r2.tr) * "," ~~ RMSE == .(rmse.tr))
   
-  
+  # set range
+  my.range <- combat.data[, range(.SD), .SDcols = my.y]
+  my.range.diff <- c(0,1,1,1)
+  my.range[1] <- my.range[1] - my.range.diff[my.dummy.index]
   
   # untransformed
-  combat.data[ , plot(get(my.x), get(my.y), main = paste0("Untransformed, ",
-                                                          my.zero.infl[my.dummy.index],
-                                                          "% zero-inflated data"),
-                      sub = eqn, xlab = "", ylab = "")]
+  combat.data[ , plot(get(my.x), get(my.y),
+                      main = paste0("Untransformed, ",
+                                    my.zero.infl[my.dummy.index],
+                                    "% zero-inflated data"),
+                      sub = eqn,
+                      xlab = "X",
+                      ylab = paste0("Y, ", my.zero.infl[my.dummy.index],"% zero-inflated"),
+                      ylim = my.range,
+                      pch = 20,
+                      col = "grey40")]
   combat.data[ , abline(lm, lwd = 3, col = "red")]
 
   # transformed
   combat.data[ , plot(get(my.x), get(my.y.tr), main = paste0("INT, ",
                                                           my.zero.infl[my.dummy.index],
                                                           "% zero-inflated data"),
-                      sub = eqn.tr, xlab = "", ylab = "")]
+                      sub = eqn.tr,
+                      xlab = "X",
+                      ylab = paste0("Y, ", my.zero.infl[my.dummy.index],"% zero-inflated"),
+                      ylim = my.range,
+                      pch = 20,
+                      col = "grey40")]
   
   combat.data[ , abline(lm.tr, lwd = 3, col = "red")]
 
@@ -678,11 +711,11 @@ dev.off()
 }
 
 # create the data for combat run 251 twice! NEEDS TO BE DONE MANUALLY
-# without ComBat but including the transformation
-fit_plots(combat.data = combat.data, pdf_name = "zero_inflated_fit_NO_ComBat")
-
 # with combat and transformation
-fit_plots(combat.data = combat.data, pdf_name = "zero_inflated_fit_AFTER_ComBat")
+fit_plots(combat.data = combat.data, pdf_name = "180717_zero_inflated_fit_AFTER_ComBat")
+
+# without ComBat but including the transformation (omit ComBat manually here -> see effect of INT on zeros)
+fit_plots(combat.data = combat.data, pdf_name = "180717_zero_inflated_fit_NO_ComBat")
 
 ```
 

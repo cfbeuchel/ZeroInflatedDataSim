@@ -26,14 +26,16 @@ This script is a small data simulation to help figure out an appropriate data tr
 
 ```{r initiate, cache = F, results = "hide", echo = F}
 # choose correct working directory
-r_on_server <- T
+r_on_server <- F
 
 # number of cores used in parallel processing
 if (r_on_server == T) {
-  .libPaths("/net/ifs1/san_projekte/projekte/genstat/07_programme/rpackages/forostar/")
+  .libPaths("/net/ifs1/san_projekte/projekte/genstat/07_programme/rpackages/amanMRO/")
   number.of.cores <- 10
-} else if (r_on_server == F) {
+  bp <- "/net/ifs1/san_projekte/projekte"
+} else {
   number.of.cores <- parallel::detectCores()/2
+  bp <- "/mnt/mount1/"
 }
 
 # Packages
@@ -54,7 +56,7 @@ for (i in c(
 }
 
 # source small function
-source("/net/ifs1/san_projekte/projekte/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/functions/batch_anova.R")
+source(paste0(bp, "/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/functions/batch_anova.R"))
 ```
 
 ## Data simulation and setup

@@ -26,7 +26,7 @@ This script is a small data simulation to help figure out an appropriate data tr
 
 ```{r initiate, cache = F, results = "hide", echo = F}
 # choose correct working directory
-r_on_server <- F
+r_on_server <- T
 
 # number of cores used in parallel processing
 if (r_on_server == T) {
@@ -45,7 +45,7 @@ for (i in c(
   "broom",
   "ordinal",
   # "sva",
-  # "MASS",
+  "MASS",
   "parallel",
   "CarlHelpR",
   "toolboxH",
@@ -54,6 +54,9 @@ for (i in c(
 )) {
   suppressPackageStartupMessages(library(i, character.only = TRUE))
 }
+
+# set up for parallelisation
+toolboxH::parallelisiere()
 
 # source small function
 source(paste0(bp, "/genstat/02_projekte/1703_ge_metab_a1_b3_sorbs/functions/batch_anova.R"))
@@ -70,7 +73,7 @@ set.seed(0815)
 effekte.input = c(0, 0.01, 0.02, 0.05, 0.1, 0.3)
 
 # size of simulated data set
-n.input = 3000
+n.input = c(3000)
 
 # magnitude of zero-inflation in %
 proz0.input = c(0, 20, 50, 80)
@@ -80,11 +83,14 @@ realisierungen.input = 1000
 
 # type of categories
 categart.input = c("quantile", "bereiche")
+# categart.input = c("quantile") #, "bereiche")
 
 # number of categories
+# categnum.input = c(10)
 categnum.input = c(5, 10, 20, 30, 40, 50)
 
 # add a batch to test the effect of ComBat on badly distributed data
+# batch.effekt.input <- c(1)
 batch.effekt.input <- c(0, 1)
 
 batch.nr.input <- 10
@@ -120,11 +126,11 @@ options(nwarnings = 50000)
 # apply over each szenario
 #=================================================================================#
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x) { # OUTER LOOP
+all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) { # OUTER LOOP
   
   # create sub-scenario
   # x <- 251 # debug
-  message(paste("\nStarting run:", x, "#==============================================#\n"))
+  message(paste("\nStarting run:", x, "of", max(unique(szenarien$combat.run)), "#==============================================#\n"))
   my.combat.run <- szenarien[combat.run == x, ]
   my.combat.run[, sub.run := 1:.N]
   
@@ -145,9 +151,20 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
     my.batch.effekt <- my.x$batch
     my.real <-  my.x$realization
     
+    # better draw data from multinominial normal distribution
+    dm <- MASS::mvrnorm(n = my.n,
+                        mu = c(3,3), # the mean of the dristibution
+                        Sigma = matrix(c(1, my.effekt, my.effekt, 1),
+                                       nrow = 2, ncol = 2))
+    df <- as.data.frame(dm)
+    setDT(df)
+    
+    # set names
+    names(df) <- c("x", "y")
+    
     # create data for scenario
-    df <- data.table(x = rnorm(my.n, 3, 1))
-    df[, y :=  (my.effekt * x) + ((1 - my.effekt) * rnorm(my.n, 3, 1))]
+    # df1 <- data.table(x = rnorm(my.n, 3, 1)) # change for plotting of transformation effect from 3 to 0
+    # df1[, y :=  (my.effekt * x) + ((1 - my.effekt) * rnorm(my.n, 3, 1))]
     
     # add batch effects do df
     df[, batch := rep_len(letters[1:batch.nr.input], length.out = my.n)]
@@ -203,80 +220,13 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   # bind togeter
   invisible(combat.data <- do.call(cbind, combat.data.raw))
   
-  #-----------------------------------------------------------------
-  # do ComBat batch adjustment
-  #-----------------------------------------------------------------
-  
-  # get cols 
-  zero.infl.cols <- names(combat.data)[grep("y.0infl.[0-9]{1,2}$", names(combat.data))]
-  y.cols <- names(combat.data)[grep("^y.[0-9]{1,2}$", names(combat.data))]
-  
-  #-----------------------------------------------------------------
-  # Pre-ComBat ANOVA
-  #-----------------------------------------------------------------
-  
-  full.before.combat.aov <- batch_anova(data = combat.data,
-                                        to.adjust = y.cols,
-                                        batch = "batch")
-  
-  zero.infl.before.combat.aov <- batch_anova(data = combat.data,
-                                             to.adjust = zero.infl.cols,
-                                             batch = "batch")
-  
-  # designate transposed matrix for adjustment
-  my.edata.y.zero.infl <- combat.data[, t(as.matrix(.SD)), .SDcols = zero.infl.cols]
-  my.edata.y <- combat.data[, t(as.matrix(.SD)), .SDcols = y.cols]
-  
-  # set batch as character string
-  my.batch <- combat.data[, unname(unlist(batch))]
-  
-  # set phenotypes to adjust
-  my.pheno <- combat.data[, .(batch)]
-  
-  # only intercept term, no covariates
-  my.formula <- ~1
-  
-  # create model matrix
-  my.modcombat <- model.matrix(my.formula, data = my.pheno)
-  
-  # this seems to be necessary suddenly
-  # https://support.bioconductor.org/p/95306/
-  BiocParallel::register(BiocParallel::SerialParam())
-  
-  # combat on zero-inflated data
-  combat.edata.zero.infl <- sva::ComBat(dat = my.edata.y.zero.infl, batch = my.batch, mod = my.modcombat, par.prior = F, prior.plots = T)
-  
-  # reset pars
-  par(mfrow=c(1,1))
-  
-  # combat on normal data
-  combat.edata.y <- sva::ComBat(dat = my.edata.y, batch = my.batch, mod = my.modcombat, par.prior = F, prior.plots = T)
-  
-  # reset pars
-  par(mfrow=c(1,1))
-  
-  # re-enter adjusted data into dat
-  combat.data[, (zero.infl.cols) := as.data.table(t(combat.edata.zero.infl))]
-  combat.data[, (y.cols) := as.data.table(t(combat.edata.y))]
-  
-  #-----------------------------------------------------------------
-  # Post-ComBat ANOVA
-  #-----------------------------------------------------------------
-  
-  full.after.combat.aov <- batch_anova(data = combat.data,
-                                       to.adjust = y.cols,
-                                       batch = "batch")
-  
-  zero.infl.after.combat.aov <- batch_anova(data = combat.data,
-                                            to.adjust = zero.infl.cols,
-                                            batch = "batch")
-  
+    
   #-----------------------------------------------------------------
   # Inverse-normal transformation
   #-----------------------------------------------------------------
   
   # what do I want to transform also only choose cols that have at least 20% zero inflation
-  cols.to.transform <- names(combat.data)[grep("y.0infl.[0-9]{1,2}$", names(combat.data))] #[my.combat.run$proz0 != 0]
+  cols.to.transform <- names(combat.data)[grep("y.0infl.[0-9]+$", names(combat.data))] #[my.combat.run$proz0 != 0]
   
   # Loop -------------------------------
   transformed.cols <- combat.data[, lapply(.SD, function(x){
@@ -301,7 +251,6 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   # Rescale Transformed data
   #-----------------------------------------------------------------
   
-  
   res <- purrr::map2(.x = combat.data[ , .SD, .SDcols = cols.to.transform],
               .y = combat.data[ , .SD, .SDcols = cols.transformed],
               .f = function(x, y) {
@@ -322,12 +271,119 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   # write rescaled data into combat.data
   combat.data[ , names(res) := res]
   
+  # set colnames
+  zero.infl.cols.transformed.rescaled <- names(res)
+  
+  #-----------------------------------------------------------------
+  # do ComBat batch adjustment
+  #-----------------------------------------------------------------
+  
+  # get cols 
+  zero.infl.cols <- names(combat.data)[grep("y.0infl.[0-9]+$", names(combat.data))]
+  y.cols <- names(combat.data)[grep("^y.[0-9]+$", names(combat.data))]
+  
+  #-----------------------------------------------------------------
+  # Pre-ComBat ANOVA
+  #-----------------------------------------------------------------
+  
+  full.before.combat.aov <- batch_anova(data = combat.data,
+                                        to.adjust = y.cols,
+                                        batch = "batch")
+  
+  zero.infl.before.combat.aov <- batch_anova(data = combat.data,
+                                             to.adjust = zero.infl.cols,
+                                             batch = "batch")
+ 
+  zero.infl.pre.combat.after.transform.aov <- batch_anova(data = combat.data,
+                                                          to.adjust = cols.transformed,
+                                                          batch = "batch") 
+  #-----------------------------------------------------------------
+  #=================================================================
+  
+  # designate transposed matrix for adjustment
+  my.edata.y.zero.infl <- combat.data[, t(as.matrix(.SD)), .SDcols = zero.infl.cols]
+  my.edata.y <- combat.data[, t(as.matrix(.SD)), .SDcols = y.cols]
+  
+  # set batch as character string
+  my.batch <- combat.data[, unname(unlist(batch))]
+  
+  # set phenotypes to adjust
+  my.pheno <- combat.data[, .(batch)]
+  
+  # only intercept term, no covariates
+  my.formula <- ~1
+  
+  # create model matrix
+  my.modcombat <- model.matrix(my.formula, data = my.pheno)
+  
+  # this seems to be necessary suddenly
+  # https://support.bioconductor.org/p/95306/
+  BiocParallel::register(BiocParallel::SerialParam())
+  
+  # combat on zero-inflated data
+  combat.edata.zero.infl <- sva::ComBat(dat = my.edata.y.zero.infl,
+                                        batch = my.batch,
+                                        mod = my.modcombat,
+                                        par.prior = F,
+                                        prior.plots = T)
+  
+  # reset pars
+  par(mfrow=c(1,1))
+  
+  # combat on normal data
+  combat.edata.y <- sva::ComBat(dat = my.edata.y,
+                                batch = my.batch,
+                                mod = my.modcombat,
+                                par.prior = F,
+                                prior.plots = T)
+  
+  # reset pars
+  par(mfrow=c(1,1))
+  
+  
+  # re-enter adjusted data into dat
+  combat.data[, (zero.infl.cols) := as.data.table(t(combat.edata.zero.infl))]
+  combat.data[, (y.cols) := as.data.table(t(combat.edata.y))]
+  
+  ###
+  # NEW AFTER CHANGING POSITION OF TRANSFORMATION - FROM CHANGING TRANSFORMATION ORDER
+  ###
+
+  # get the colums of the transformed data
+  my.edata.y.zero.infl.transformed <- combat.data[, t(as.matrix(.SD)), .SDcols = cols.transformed]
+
+  # combat on zero-inflated & transformed data data
+  combat.edata.zero.infl.transformed <- sva::ComBat(dat = my.edata.y.zero.infl.transformed,
+                                                 batch = my.batch,
+                                                 mod = my.modcombat,
+                                                 par.prior = F,
+                                                 prior.plots = T)
+  
+  # reset pars
+  par(mfrow=c(1,1))
+  combat.data[, (cols.transformed) := as.data.table(t(combat.edata.zero.infl.transformed))]
+  
+  ###
+  # =============================================
+  ###
+  
+  # Now the data is back in combat.data
+  
   #-----------------------------------------------------------------
   # Post-ComBat ANOVA
   #-----------------------------------------------------------------
   
+  full.after.combat.aov <- batch_anova(data = combat.data,
+                                       to.adjust = y.cols,
+                                       batch = "batch")
+  
+  zero.infl.after.combat.aov <- batch_anova(data = combat.data,
+                                            to.adjust = zero.infl.cols,
+                                            batch = "batch")
+
+  # of the (prior to combat) transformed data post combat
   zero.infl.after.combat.after.transform.aov <- batch_anova(data = combat.data,
-                                            to.adjust = names(transformed.cols),
+                                            to.adjust = cols.transformed,
                                             batch = "batch")
   
   #-----------------------------------------------------------------
@@ -401,6 +457,7 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
                      p.ANOVA.full.post.ComBat = full.after.combat.aov$p.values,
                      p.ANOVA.zero.infl.pre.ComBat = zero.infl.before.combat.aov$p.values,
                      p.ANOVA.zero.infl.post.ComBat = zero.infl.after.combat.aov$p.values,
+                     p.ANOVA.zero.infl.pre.ComBat.post.transformation = zero.infl.pre.combat.after.transform.aov$p.values, # NEW - IS IT NEEDED? #TAG#
                      p.ANOVA.zero.infl.post.ComBat.post.transformation = zero.infl.after.combat.after.transform.aov$p.values)]
   
   #-----------------------------------------------------------------
@@ -410,7 +467,7 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   my.categnum <- (unique(my.combat.run$categnum))
   
   #get the cols to categorise
-  cols.to.categorise <- grep("^y.0infl.[0-9]{1,2}$", names(combat.data), value = T)
+  cols.to.categorise <- grep("^y.0infl.[0-9]+$", names(combat.data), value = T)
   
   if(my.categart == "quantile") {
     
@@ -480,13 +537,13 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
     # extract coefficients
     #glm
     linmod.dicho.coefs <- setDT(as.data.frame(coefficients(linmod.dicho)), keep.rownames = T)
-    linmod.dicho.pval <- unlist(linmod.dicho.coefs[rn == grep("x.[0-9]{1,2}", linmod.dicho.coefs$rn, value = T), "Pr(>|z|)"])
-    linmod.dicho.beta <- unlist(linmod.dicho.coefs[rn == grep("x.[0-9]{1,2}", linmod.dicho.coefs$rn, value = T), "Estimate"])
+    linmod.dicho.pval <- unlist(linmod.dicho.coefs[rn == grep("x.[0-9]+$", linmod.dicho.coefs$rn, value = T), "Pr(>|z|)"])
+    linmod.dicho.beta <- unlist(linmod.dicho.coefs[rn == grep("x.[0-9]+$", linmod.dicho.coefs$rn, value = T), "Estimate"])
     
     # ordinal
     logit.coeffs <- as.data.table(as.data.frame(summary(logit.mod)$coefficients), keep.rownames = T)
     logit.beta <- logit.mod$beta
-    logit.pval <- unlist(logit.coeffs[rn == grep("x.[0-9]{1,2}", logit.coeffs$rn, value = T), "Pr(>|z|)"])
+    logit.pval <- unlist(logit.coeffs[rn == grep("x.[0-9]+$", logit.coeffs$rn, value = T), "Pr(>|z|)"])
     logit.aic <- as.numeric(levels(logit.mod$info$AIC))
     
     # enter coefficients into result file
@@ -508,7 +565,7 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   # return
   return(lm.cor.res)
   
-}, mc.cores = number.of.cores, mc.cleanup = T) # END OUTER LOOP
+}) #, mc.cores = number.of.cores, mc.cleanup = T) # END OUTER LOOP
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 #=============================================================#
 
@@ -522,7 +579,7 @@ all.scenarios <- rbindlist(all.combat.runs.raw)
 
 # Save for use in STEP2
 save_csv_carl(file = all.scenarios,
-              file_name = "SimulationResultsForSTEP2",
+              file_name = "SimulationResultsPreComBatINTForSTEP2",
               subfolder = "results")
 ```
 

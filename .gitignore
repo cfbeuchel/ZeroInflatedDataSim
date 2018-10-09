@@ -52,5 +52,4 @@ temp/*
 *.html
 
 # ignore the .R output created by purl() in /RCode
-RCode/*.R
 Rcode/*.pdf

@@ -20,7 +20,7 @@ r_on_server <- T
 # number of cores used in parallel processing
 if (r_on_server == T) {
   .libPaths("/net/ifs1/san_projekte/projekte/genstat/07_programme/rpackages/amanMRO/")
-  number.of.cores <- 5
+  number.of.cores <- 15
   bp <- "/net/ifs1/san_projekte/projekte"
 } else {
   number.of.cores <- parallel::detectCores()/2

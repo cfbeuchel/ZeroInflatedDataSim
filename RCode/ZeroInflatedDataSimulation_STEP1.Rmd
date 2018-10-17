@@ -10,17 +10,6 @@ editor_options:
   chunk_output_type: console
 ---
 
-```{r knitr, cache = F, results = "markup", echo = T, warning = T}
-gc()
-
-# Set the global knitr options
-knitr::opts_chunk$set(cache = F, results = "hide", echo = T ,include = T)
-
-# what should the output file be called?
-filename = "STEP 1: Zero-inflated data simulation"
-```
-
-# `r filename`
 ***
 This script is a small data simulation to help figure out an appropriate data transformation withouth loosing too much statistical power in the subsequent regression analyses.
 
@@ -30,8 +19,8 @@ r_on_server <- T
 
 # number of cores used in parallel processing
 if (r_on_server == T) {
-  .libPaths("/net/ifs1/san_projekte/projekte/genstat/07_programme/rpackages/forostar/")
-  number.of.cores <- 10
+  .libPaths("/net/ifs1/san_projekte/projekte/genstat/07_programme/rpackages/amanMRO/")
+  number.of.cores <- 5
   bp <- "/net/ifs1/san_projekte/projekte"
 } else {
   number.of.cores <- parallel::detectCores()/2
@@ -61,6 +50,18 @@ toolboxH::parallelisiere()
 # source small function
 source(here("RCode/batch_anova.R"))
 ```
+
+```{r knitr, cache = F, results = "markup", echo = T, warning = T}
+gc()
+
+# Set the global knitr options
+knitr::opts_chunk$set(cache = F, results = "hide", echo = T ,include = T)
+
+# what should the output file be called?
+filename = "STEP 1: Zero-inflated data simulation"
+```
+
+# `r filename`
 
 ## Data simulation and setup
 
@@ -126,7 +127,7 @@ options(nwarnings = 50000)
 # apply over each szenario
 #=================================================================================#
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) { # OUTER LOOP
+all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x) { # OUTER LOOP
   
   # create sub-scenario
   # x <- 251 # debug
@@ -153,7 +154,7 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
     
     # better draw data from multinominial normal distribution
     dm <- MASS::mvrnorm(n = my.n,
-                        mu = c(3,3), # the mean of the dristibution
+                        mu = c(3,3), # the mean of the distribution
                         Sigma = matrix(c(1, my.effekt, my.effekt, 1),
                                        nrow = 2, ncol = 2))
     df <- as.data.frame(dm)
@@ -175,11 +176,18 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
     # create zero-inflated y-derived data
     #-----------------------------------------------------------------
     
+    ### NEW  ###
+    # do not do offset when my.proz0 == 0
+    
+    if(my.proz0 != 0){
     # way one:
     df[, y.0infl := y]
     df[y < quantile(y.0infl, probs = my.proz0/100), y.0infl := 0]
     min.found = df[y.0infl > 0, min(y.0infl)]
     df[y.0infl > 0, y.0infl := y.0infl - 0.99*min.found]
+    } else {
+      df[, y.0infl := y]
+    }
     
     # check
     # df[,.N,y.0infl==0]
@@ -220,13 +228,16 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
   # bind togeter
   invisible(combat.data <- do.call(cbind, combat.data.raw))
   
-    
   #-----------------------------------------------------------------
-  # Inverse-normal transformation
+  # Inverse-normal transformation of full and zero-inflated data
   #-----------------------------------------------------------------
   
   # what do I want to transform also only choose cols that have at least 20% zero inflation
-  cols.to.transform <- names(combat.data)[grep("y.0infl.[0-9]+$", names(combat.data))] #[my.combat.run$proz0 != 0]
+  transform.full.cols <- names(combat.data)[grep("y.[0-9]+$", names(combat.data))] #[my.combat.run$proz0 != 0]
+  transform.0infl.cols <- names(combat.data)[grep("y.0infl.[0-9]+$", names(combat.data))] #[my.combat.run$proz0 != 0]
+  
+  # all cols (full and zero-inflated)
+  cols.to.transform <- c(transform.full.cols, transform.0infl.cols)
   
   # Loop -------------------------------
   transformed.cols <- combat.data[, lapply(.SD, function(x){
@@ -244,43 +255,28 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
   # set transformed cols into combat.data
   names(transformed.cols) <- paste0(names(transformed.cols), ".transformed")
   
+  # re-enter transformed data
   combat.data[ , names(transformed.cols) := transformed.cols]
-  cols.transformed <- names(transformed.cols)
   
-  #-----------------------------------------------------------------
-  # Rescale Transformed data
-  #-----------------------------------------------------------------
-  
-  res <- purrr::map2(.x = combat.data[ , .SD, .SDcols = cols.to.transform],
-              .y = combat.data[ , .SD, .SDcols = cols.transformed],
-              .f = function(x, y) {
-                
-                # multiply the transformed values, now SD = 1, with the SD of the untransformed values to scale them back to its original SD
-                # original sd
-                my.sd <- sd(x, na.rm = T)
-                my.mean <- mean(x, na.rm = T)
-                
-                # transformed col * original sd
-                my.y <- y * my.sd + my.mean
-                return(my.y)
-              })
-  
-  # rename res cols to indicate rescailing
-  names(res) <- paste0(names(res), ".transformed.rescaled")
-  
-  # write rescaled data into combat.data
-  combat.data[ , names(res) := res]
-  
-  # set colnames
-  zero.infl.cols.transformed.rescaled <- names(res)
+  # END: INT of full and zero-infl data 
+  # -----------------------------------
   
   #-----------------------------------------------------------------
   # do ComBat batch adjustment
   #-----------------------------------------------------------------
   
+  # I need to do 4 batch adjustments
+  # y
+  # y.0infl
+  # y.transformed
+  # y.0infl.transformed
+  
+  # batch adjust the UNTRANSFORMED (y and y.0infl) and TRANSFORMED (y.*.transformed and y.0infl.*.transformed) data 
   # get cols 
-  zero.infl.cols <- names(combat.data)[grep("y.0infl.[0-9]+$", names(combat.data))]
   y.cols <- names(combat.data)[grep("^y.[0-9]+$", names(combat.data))]
+  y.transformed.cols <- names(combat.data)[grep("^y.[0-9]+.transformed$", names(combat.data))]
+  y.0infl.cols <- names(combat.data)[grep("y.0infl.[0-9]+$", names(combat.data))] # new name for consistency
+  y.0infl.transformed.cols <- names(combat.data)[grep("y.0infl.[0-9]+.transformed$", names(combat.data))]
   
   #-----------------------------------------------------------------
   # Pre-ComBat ANOVA
@@ -290,19 +286,27 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
                                         to.adjust = y.cols,
                                         batch = "batch")
   
+  full.after.transform.before.combat.aov <- batch_anova(data = combat.data,
+                                        to.adjust = y.transformed.cols,
+                                        batch = "batch")
+  
   zero.infl.before.combat.aov <- batch_anova(data = combat.data,
-                                             to.adjust = zero.infl.cols,
+                                             to.adjust = y.0infl.cols,
                                              batch = "batch")
  
-  zero.infl.pre.combat.after.transform.aov <- batch_anova(data = combat.data,
-                                                          to.adjust = cols.transformed,
+  zero.infl.after.transform.before.combat.aov <- batch_anova(data = combat.data,
+                                                          to.adjust = y.0infl.transformed.cols,
                                                           batch = "batch") 
   #-----------------------------------------------------------------
   #=================================================================
   
   # designate transposed matrix for adjustment
-  my.edata.y.zero.infl <- combat.data[, t(as.matrix(.SD)), .SDcols = zero.infl.cols]
   my.edata.y <- combat.data[, t(as.matrix(.SD)), .SDcols = y.cols]
+  my.edata.y.0infl <- combat.data[, t(as.matrix(.SD)), .SDcols = y.0infl.cols]
+  
+  # for transformed data
+  my.edata.y.transformed <- combat.data[, t(as.matrix(.SD)), .SDcols = y.transformed.cols]
+  my.edata.y.0infl.transformed <- combat.data[, t(as.matrix(.SD)), .SDcols = y.0infl.transformed.cols]
   
   # set batch as character string
   my.batch <- combat.data[, unname(unlist(batch))]
@@ -320,17 +324,7 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
   # https://support.bioconductor.org/p/95306/
   BiocParallel::register(BiocParallel::SerialParam())
   
-  # combat on zero-inflated data
-  combat.edata.zero.infl <- sva::ComBat(dat = my.edata.y.zero.infl,
-                                        batch = my.batch,
-                                        mod = my.modcombat,
-                                        par.prior = F,
-                                        prior.plots = T)
-  
-  # reset pars
-  par(mfrow=c(1,1))
-  
-  # combat on normal data
+  # combat on full data
   combat.edata.y <- sva::ComBat(dat = my.edata.y,
                                 batch = my.batch,
                                 mod = my.modcombat,
@@ -339,21 +333,29 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
   
   # reset pars
   par(mfrow=c(1,1))
-  
-  
-  # re-enter adjusted data into dat
-  combat.data[, (zero.infl.cols) := as.data.table(t(combat.edata.zero.infl))]
-  combat.data[, (y.cols) := as.data.table(t(combat.edata.y))]
-  
-  ###
-  # NEW AFTER CHANGING POSITION OF TRANSFORMATION - FROM CHANGING TRANSFORMATION ORDER
-  ###
 
-  # get the colums of the transformed data
-  my.edata.y.zero.infl.transformed <- combat.data[, t(as.matrix(.SD)), .SDcols = cols.transformed]
-
+  # combat on full data
+  combat.edata.y.transformed <- sva::ComBat(dat = my.edata.y.transformed,
+                                            batch = my.batch,
+                                            mod = my.modcombat,
+                                            par.prior = F,
+                                            prior.plots = T)
+  
+  # reset pars
+  par(mfrow=c(1,1))
+  
+  # combat on zero-inflated data
+  combat.edata.0infl <- sva::ComBat(dat = my.edata.y.0infl,
+                                        batch = my.batch,
+                                        mod = my.modcombat,
+                                        par.prior = F,
+                                        prior.plots = T)
+  
+  # reset pars
+  par(mfrow=c(1,1))
+  
   # combat on zero-inflated & transformed data data
-  combat.edata.zero.infl.transformed <- sva::ComBat(dat = my.edata.y.zero.infl.transformed,
+  combat.edata.0infl.transformed <- sva::ComBat(dat = my.edata.y.0infl.transformed,
                                                  batch = my.batch,
                                                  mod = my.modcombat,
                                                  par.prior = F,
@@ -361,13 +363,17 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
   
   # reset pars
   par(mfrow=c(1,1))
-  combat.data[, (cols.transformed) := as.data.table(t(combat.edata.zero.infl.transformed))]
   
-  ###
-  # =============================================
-  ###
+  # re-enter adjusted data into dat
+  combat.data[, (y.cols) := as.data.table(t(combat.edata.y))]
+  combat.data[, (y.transformed.cols) := as.data.table(t(combat.edata.y.transformed))]
+  combat.data[, (y.0infl.cols) := as.data.table(t(combat.edata.0infl))]
+  combat.data[, (y.0infl.transformed.cols) := as.data.table(t(combat.edata.0infl.transformed))]
   
   # Now the data is back in combat.data
+  ###
+  # END: ComBat 
+  ###
   
   #-----------------------------------------------------------------
   # Post-ComBat ANOVA
@@ -377,14 +383,18 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
                                        to.adjust = y.cols,
                                        batch = "batch")
   
+  full.after.transform.after.combat.aov <- batch_anova(data = combat.data,
+                                                       to.adjust = y.transformed.cols,
+                                                       batch = "batch")
+  
   zero.infl.after.combat.aov <- batch_anova(data = combat.data,
-                                            to.adjust = zero.infl.cols,
+                                            to.adjust = y.0infl.cols,
                                             batch = "batch")
-
+  
   # of the (prior to combat) transformed data post combat
-  zero.infl.after.combat.after.transform.aov <- batch_anova(data = combat.data,
-                                            to.adjust = cols.transformed,
-                                            batch = "batch")
+  zero.infl.after.transform.after.combat.aov <- batch_anova(data = combat.data,
+                                                            to.adjust = y.0infl.transformed.cols,
+                                                            batch = "batch")
   
   #-----------------------------------------------------------------
   # fit lm on each ComBat chunk (96)
@@ -394,30 +404,36 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
   # loop -------------------------------------------------
   lm.cor.res <- lapply(my.combat.run$sub.run, function(f){
     
+    # f <- 81 # debug
     # formulas
     my.formula.full <- as.formula(paste0("y.", f, " ~ ", "x.", f))
+    my.formula.full.transformed <- as.formula(paste0("y.", f, ".transformed ~ ", "x.", f))
     my.formula.0infl <- as.formula(paste0("y.0infl.", f, " ~ ", "x.", f))
     my.formula.0infl.transformed <- as.formula(paste0("y.0infl.", f, ".transformed ", " ~ ", "x.", f))
-    my.formula.0infl.transformed.rescaled <- as.formula(paste0("y.0infl.", f, ".transformed.rescaled ", " ~ ", "x.", f))
     
     # calc the lm
     linmod.full.data <- summary(lm(my.formula.full, data = combat.data)) 
+    linmod.full.data.transformed <- summary(lm(my.formula.full.transformed, data = combat.data)) 
     linmod.zero.inflated <- summary(lm(my.formula.0infl, data = combat.data)) 
     linmod.zero.inflated.transformed <- summary(lm(my.formula.0infl.transformed, data = combat.data)) 
-    linmod.zero.inflated.transformed.rescaled <- summary(lm(my.formula.0infl.transformed.rescaled, data = combat.data)) 
     
     # do the rank correlation
     cor.full.data <- tidy(combat.data[, cor.test(x = get(paste0("x.", f)), y = get(paste0("y.", f)), method = "spearman")])
+    cor.full.data.transformed <- tidy(combat.data[, cor.test(x = get(paste0("x.", f)), y = get(paste0("y.", f, ".transformed")), method = "spearman")])
     cor.zero.inflated <- tidy(combat.data[, cor.test(x = get(paste0("x.", f)), y = get(paste0("y.0infl.", f)), method = "spearman")])
     cor.zero.inflated.transformed <- tidy(combat.data[, cor.test(x = get(paste0("x.", f)), y = get(paste0("y.0infl.", f, ".transformed")), method = "spearman")])
-    cor.zero.inflated.transformed.rescaled <- tidy(combat.data[, cor.test(x = get(paste0("x.", f)), y = get(paste0("y.0infl.", f, ".transformed.rescaled")), method = "spearman")])
     
     # compile results
     res <- data.table(spearman.cor.full.data = cor.full.data$estimate,
                       spearman.cor.pval.full.data = cor.full.data$p.value,
+                      spearman.cor.full.data.transformed = cor.full.data.transformed$estimate,
+                      spearman.cor.pval.full.data.transformed = cor.full.data.transformed$p.value,
                       linmod.r2.full.data = linmod.full.data$r.squared,
                       linmod.pval.full.data = linmod.full.data$coefficients[grep("x.", rownames(linmod.full.data$coefficients)), "Pr(>|t|)"],
                       linmod.beta.full.data = linmod.full.data$coefficients[grep("x.", rownames(linmod.full.data$coefficients)),"Estimate"],
+                      linmod.r2.full.data.transformed = linmod.full.data.transformed$r.squared,
+                      linmod.pval.full.data.transformed = linmod.full.data.transformed$coefficients[grep("x.", rownames(linmod.full.data.transformed$coefficients)), "Pr(>|t|)"],
+                      linmod.beta.full.data.transformed = linmod.full.data.transformed$coefficients[grep("x.", rownames(linmod.full.data.transformed$coefficients)),"Estimate"],
                       spearman.cor.zero.inflated = cor.zero.inflated$estimate,
                       spearman.cor.pval.zero.inflated = cor.zero.inflated$p.value,
                       linmod.r2.zero.inflated = linmod.zero.inflated$r.squared,
@@ -427,12 +443,7 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
                       spearman.cor.pval.zero.inflated.transformed = cor.zero.inflated.transformed$p.value,
                       linmod.r2.zero.inflated.transformed = linmod.zero.inflated.transformed$r.squared,
                       linmod.pval.zero.inflated.transformed = linmod.zero.inflated.transformed$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed$coefficients)),"Pr(>|t|)"],
-                      linmod.beta.zero.inflated.transformed = linmod.zero.inflated.transformed$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed$coefficients)),"Estimate"],
-                      linmod.r2.zero.inflated.transformed.rescaled = linmod.zero.inflated.transformed.rescaled$r.squared,
-                      linmod.pval.zero.inflated.transformed.rescaled = linmod.zero.inflated.transformed.rescaled$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed.rescaled$coefficients)),"Pr(>|t|)"],
-                      linmod.beta.zero.inflated.transformed.rescaled = linmod.zero.inflated.transformed.rescaled$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed.rescaled$coefficients)),"Estimate"],
-                      spearman.cor.zero.inflated.transformed.rescaled = cor.zero.inflated.transformed.rescaled$estimate,
-                      spearman.cor.pval.zero.inflated.transformed.rescaled = cor.zero.inflated.transformed.rescaled$p.value)
+                      linmod.beta.zero.inflated.transformed = linmod.zero.inflated.transformed$coefficients[grep("x.", rownames(linmod.zero.inflated.transformed$coefficients)),"Estimate"])
     
     # return res dt just created
     return(res)
@@ -455,10 +466,12 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
                      batch.effect = my.combat.run$batch,
                      p.ANOVA.full.pre.ComBat = full.before.combat.aov$p.values,
                      p.ANOVA.full.post.ComBat = full.after.combat.aov$p.values,
+                     p.ANOVA.full.post.transform.pre.ComBat = full.after.transform.before.combat.aov$p.values,
+                     p.ANOVA.full.post.transform.post.ComBat = full.after.transform.after.combat.aov$p.values,
                      p.ANOVA.zero.infl.pre.ComBat = zero.infl.before.combat.aov$p.values,
                      p.ANOVA.zero.infl.post.ComBat = zero.infl.after.combat.aov$p.values,
-                     p.ANOVA.zero.infl.pre.ComBat.post.transformation = zero.infl.pre.combat.after.transform.aov$p.values, # NEW - IS IT NEEDED? #TAG#
-                     p.ANOVA.zero.infl.post.ComBat.post.transformation = zero.infl.after.combat.after.transform.aov$p.values)]
+                     p.ANOVA.zero.infl.post.transformation.pre.ComBat = zero.infl.after.transform.before.combat.aov$p.values,
+                     p.ANOVA.zero.infl.post.transformation.post.ComBat = zero.infl.after.transform.after.combat.aov$p.values)]
   
   #-----------------------------------------------------------------
   # Form Categories over zero-inflated data
@@ -565,7 +578,7 @@ all.combat.runs.raw <- lapply(sort(unique(szenarien$combat.run)),  function(x) {
   # return
   return(lm.cor.res)
   
-}) #, mc.cores = number.of.cores, mc.cleanup = T) # END OUTER LOOP
+}, mc.cores = number.of.cores, mc.cleanup = T) # END OUTER LOOP
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 #=============================================================#
 

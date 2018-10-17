@@ -28,7 +28,7 @@ fit_plots <- function(combat.data, pdf_name){
     my.y.tr <- paste0("y.0infl.", i, ".transformed")
     
     # fit lm
-    lm <- lm(get(my.y) ~ get(my.x), data = combat.data)
+    lm <- lm(scale(get(my.y), center = T, scale = F) ~ get(my.x), data = combat.data)
     
     # coeffs for lm
     rmse <- round(sqrt(mean(resid(lm)^2)), 2)
@@ -61,8 +61,8 @@ fit_plots <- function(combat.data, pdf_name){
     my.range[1] <- my.range[1] - my.range.diff[my.dummy.index]
     
     # untransformed
-    combat.data[ , plot(get(my.x), get(my.y),
-                        main = paste0("Untransformed, ",
+    combat.data[ , plot(get(my.x), scale(get(my.y), center = T, scale = F),
+                        main = paste0("Centered, untransformed, ",
                                       my.zero.infl[my.dummy.index],
                                       "% zero-inflated data"),
                         sub = eqn,

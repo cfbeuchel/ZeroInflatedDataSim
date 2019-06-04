@@ -24,7 +24,8 @@ if (r_on_server == T) {
   bp <- "/net/ifs1/san_projekte/projekte"
 } else {
   number.of.cores <- parallel::detectCores()/2
-  bp <- "/mnt/mount1/"
+  bp <- "/net/ifs1/san_projekte/projekte"
+  # bp <- "/mnt/mount1/"
 }
 
 # Packages
@@ -33,7 +34,7 @@ for (i in c(
   "data.table",
   "broom",
   "ordinal",
-  # "sva",
+  "sva",
   "MASS",
   "parallel",
   "CarlHelpR",
@@ -45,7 +46,6 @@ for (i in c(
 }
 
 # set up for parallelisation
-toolboxH::parallelisiere()
 
 # source small function
 source(here("RCode/batch_anova.R"))
@@ -71,7 +71,8 @@ filename = "STEP 1: Zero-inflated data simulation"
 set.seed(0815)
 
 # magnitude of simulated effect  
-effekte.input = c(0, 0.01, 0.02, 0.05, 0.1, 0.3)
+effekte.input = c(0, 0.01, 0.02, sqrt(0.025), 0.05, 0.1, 0.2, 0.3)
+# effekte.input = sqrt(c(0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05))
 
 # size of simulated data set
 n.input = c(3000)
@@ -113,7 +114,8 @@ szenarien[,num := 1:.N]
 # combat ID bauen
 # szenarien (alle effekte, proz0 und 4 realisierungen pro combat run)
 setorder(szenarien, effekte, n, proz0, categart, categnum, batch, realization)
-szenarien[, realisation.groups := sort(rep(1:(realisierungen.input /  4), 4))]
+# szenarien[, realisation.groups := sort(rep(1:(realisierungen.input /  2), 4))]
+szenarien[, realisation.groups := sort(rep(1:(realisierungen.input /  2), 4))]
 szenarien[, combat.run := paste(n, categart, categnum, batch, realisation.groups)]
 szenarien[, combat.run := as.numeric(factor(combat.run))]
 szenarien[, .N, combat.run][, .N, N]
@@ -123,7 +125,7 @@ szenarien[, .N, combat.run][, .N, N]
 
 ```{r test.data, warning=T}
 options(nwarnings = 50000)
-
+parallelisiere(proc = number.of.cores)
 # apply over each szenario
 #=================================================================================#
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
@@ -154,7 +156,7 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
     
     # better draw data from multinominial normal distribution
     dm <- MASS::mvrnorm(n = my.n,
-                        mu = c(3,3), # the mean of the distribution
+                        mu = c(5,5), # the mean of the distribution
                         Sigma = matrix(c(1, my.effekt, my.effekt, 1),
                                        nrow = 2, ncol = 2))
     df <- as.data.frame(dm)
@@ -162,6 +164,9 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
     
     # set names
     names(df) <- c("x", "y")
+    
+    # get lognormal data for y
+    df[, y := exp(y)]
     
     # create data for scenario
     # df1 <- data.table(x = rnorm(my.n, 3, 1)) # change for plotting of transformation effect from 3 to 0
@@ -262,6 +267,30 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   # -----------------------------------
   
   #-----------------------------------------------------------------
+  # Asinh-Transformation of full and zero-inflated data
+  #-----------------------------------------------------------------
+  
+  # Loop -------------------------------
+  transformed.cols <- combat.data[, lapply(.SD, function(x){
+    
+    # x <- combat.data$y.0infl.1  # debug
+    one.transformed.col <- asinh(x)
+    
+    # return to "transformed.cols"-output
+    return(one.transformed.col)
+    
+    # end of lapply-loop
+  }), .SDcols = cols.to.transform]
+  # End: Loop -------------------------
+  
+  # re-enter transformed data
+  combat.data[ , (cols.to.transform) := transformed.cols]
+
+  
+  # END: Asinh of full and zero-infl data 
+  # -----------------------------------
+  
+  #-----------------------------------------------------------------
   # do ComBat batch adjustment
   #-----------------------------------------------------------------
   
@@ -282,21 +311,21 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   # Pre-ComBat ANOVA
   #-----------------------------------------------------------------
   
-  full.before.combat.aov <- batch_anova(data = combat.data,
-                                        to.adjust = y.cols,
-                                        batch = "batch")
-  
-  full.after.transform.before.combat.aov <- batch_anova(data = combat.data,
-                                        to.adjust = y.transformed.cols,
-                                        batch = "batch")
-  
-  zero.infl.before.combat.aov <- batch_anova(data = combat.data,
-                                             to.adjust = y.0infl.cols,
-                                             batch = "batch")
- 
-  zero.infl.after.transform.before.combat.aov <- batch_anova(data = combat.data,
-                                                          to.adjust = y.0infl.transformed.cols,
-                                                          batch = "batch") 
+  # full.before.combat.aov <- batch_anova(data = combat.data,
+  #                                       to.adjust = y.cols,
+  #                                       batch = "batch")
+  # 
+  # full.after.transform.before.combat.aov <- batch_anova(data = combat.data,
+  #                                       to.adjust = y.transformed.cols,
+  #                                       batch = "batch")
+  # 
+  # zero.infl.before.combat.aov <- batch_anova(data = combat.data,
+  #                                            to.adjust = y.0infl.cols,
+  #                                            batch = "batch")
+  # 
+  # zero.infl.after.transform.before.combat.aov <- batch_anova(data = combat.data,
+  #                                                         to.adjust = y.0infl.transformed.cols,
+  #                                                         batch = "batch") 
   #-----------------------------------------------------------------
   #=================================================================
   
@@ -379,22 +408,22 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
   # Post-ComBat ANOVA
   #-----------------------------------------------------------------
   
-  full.after.combat.aov <- batch_anova(data = combat.data,
-                                       to.adjust = y.cols,
-                                       batch = "batch")
-  
-  full.after.transform.after.combat.aov <- batch_anova(data = combat.data,
-                                                       to.adjust = y.transformed.cols,
-                                                       batch = "batch")
-  
-  zero.infl.after.combat.aov <- batch_anova(data = combat.data,
-                                            to.adjust = y.0infl.cols,
-                                            batch = "batch")
-  
-  # of the (prior to combat) transformed data post combat
-  zero.infl.after.transform.after.combat.aov <- batch_anova(data = combat.data,
-                                                            to.adjust = y.0infl.transformed.cols,
-                                                            batch = "batch")
+  # full.after.combat.aov <- batch_anova(data = combat.data,
+  #                                      to.adjust = y.cols,
+  #                                      batch = "batch")
+  # 
+  # full.after.transform.after.combat.aov <- batch_anova(data = combat.data,
+  #                                                      to.adjust = y.transformed.cols,
+  #                                                      batch = "batch")
+  # 
+  # zero.infl.after.combat.aov <- batch_anova(data = combat.data,
+  #                                           to.adjust = y.0infl.cols,
+  #                                           batch = "batch")
+  # 
+  # # of the (prior to combat) transformed data post combat
+  # zero.infl.after.transform.after.combat.aov <- batch_anova(data = combat.data,
+  #                                                           to.adjust = y.0infl.transformed.cols,
+  #                                                           batch = "batch")
   
   #-----------------------------------------------------------------
   # fit lm on each ComBat chunk (96)
@@ -463,15 +492,16 @@ all.combat.runs.raw <- mclapply(sort(unique(szenarien$combat.run)),  function(x)
                      proz0 = my.combat.run$proz0,
                      categart = my.combat.run$categart,
                      categnum = my.combat.run$categnum,
-                     batch.effect = my.combat.run$batch,
-                     p.ANOVA.full.pre.ComBat = full.before.combat.aov$p.values,
-                     p.ANOVA.full.post.ComBat = full.after.combat.aov$p.values,
-                     p.ANOVA.full.post.transform.pre.ComBat = full.after.transform.before.combat.aov$p.values,
-                     p.ANOVA.full.post.transform.post.ComBat = full.after.transform.after.combat.aov$p.values,
-                     p.ANOVA.zero.infl.pre.ComBat = zero.infl.before.combat.aov$p.values,
-                     p.ANOVA.zero.infl.post.ComBat = zero.infl.after.combat.aov$p.values,
-                     p.ANOVA.zero.infl.post.transformation.pre.ComBat = zero.infl.after.transform.before.combat.aov$p.values,
-                     p.ANOVA.zero.infl.post.transformation.post.ComBat = zero.infl.after.transform.after.combat.aov$p.values)]
+                     batch.effect = my.combat.run$batch
+                     # p.ANOVA.full.pre.ComBat = full.before.combat.aov$p.values,
+                     # p.ANOVA.full.post.ComBat = full.after.combat.aov$p.values,
+                     # p.ANOVA.full.post.transform.pre.ComBat = full.after.transform.before.combat.aov$p.values,
+                     # p.ANOVA.full.post.transform.post.ComBat = full.after.transform.after.combat.aov$p.values,
+                     # p.ANOVA.zero.infl.pre.ComBat = zero.infl.before.combat.aov$p.values,
+                     # p.ANOVA.zero.infl.post.ComBat = zero.infl.after.combat.aov$p.values,
+                     # p.ANOVA.zero.infl.post.transformation.pre.ComBat = zero.infl.after.transform.before.combat.aov$p.values,
+                     # p.ANOVA.zero.infl.post.transformation.post.ComBat = zero.infl.after.transform.after.combat.aov$p.values
+                     )]
   
   #-----------------------------------------------------------------
   # Form Categories over zero-inflated data
